@@ -2,6 +2,7 @@ package imgsvr
 
 import (
 	"errors"
+	"fmt"
 	l4g "github.com/alecthomas/log4go"
 	"github.com/ctripcorp/cat"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
@@ -29,7 +30,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	handler.ChainBuilder = &ProcChainBuilder{Cat}
 	tran := Cat.NewTransaction("Image.Request", "Request")
 	uri := request.URL.String()
-	tran.AddData("url", uri)
 	var (
 		err error
 	)
@@ -41,7 +41,6 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			tran.SetStatus(p)
 		}
 		if err != nil {
-			Cat.LogError(err)
 			tran.SetStatus(err)
 		}
 		if p == nil && err == nil {
@@ -52,34 +51,47 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			http.Error(writer, http.StatusText(404), 404)
 		}
 	}()
+	data := map[string]string{
+		"referer":    request.Referer(),
+		"proto":      request.Proto,
+		"agent":      request.UserAgent(),
+		"remoteaddr": request.RemoteAddr,
+	}
+	LogEvent(Cat, "URL", "URL.client", data)
 
+	data1 := map[string]string{
+		"Http": request.Method + " " + uri,
+	}
+	LogEvent(Cat, "URL", "URL.method", data1)
 	params, ok1 := legalUrl.FindStringSubmatchMap(uri)
 	if !ok1 {
 		err = errors.New("uri.parseerror")
+		LogEvent(Cat, "Error", "uri.parseerror", make(map[string]string))
 		l4g.Error("%s; rcv(url:%s)", err, uri)
 		return
 	}
 	store, storagetype, err1 := FindStorage(params)
 	if err1 != nil {
-		tran.AddData("storage", err1.Error())
 		err = errors.New("storage.parseerror")
+		LogEvent(Cat, "Error", "storage.parseerror", map[string]string{"detail": err1.Error()})
 		l4g.Error("%s; rcv(url:%s)", err1, uri)
 		return
 	}
 	chain, err1 := handler.ChainBuilder.Build(params)
 	if err1 != nil {
-		tran.AddData("procchain.build", err1.Error())
+		LogEvent(Cat, "Error", "procchain.build", map[string]string{"detail": err1.Error()})
 		err = errors.New("procchain.builderror")
 		l4g.Error("%s; rcv(url:%s)", err1, uri)
 		return
 	}
 
-	getimagetran := Cat.NewTransaction("Image.Get", "GetImage")
+	getimagetran := Cat.NewTransaction("Image.Storage", storagetype)
 	bts, err1 := store.GetImage()
 	if err1 != nil {
 		getimagetran.AddData("getimage", err1.Error())
+		LogErrorEvent(Cat, storagetype+".readerror", err1.Error())
 		err = errors.New(storagetype + ".readerror")
-		l4g.Error("%s; rcv(url:%s)", err1, uri)
+		l4g.Error("%s -- %s; rcv(url:%s)", "getimage", err1, uri)
 		getimagetran.SetStatus(err)
 		return
 	} else {
@@ -103,11 +115,13 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	case ok := <-status:
 		if !ok {
 			err = errors.New("image.processerror")
+			LogErrorEvent(Cat, "image.processerror", "")
 			l4g.Error("%s; rcv(url:%s)", err, uri)
 			return
 		}
 	case <-time.After(time.Second * 5):
 		err = errors.New("image.processtimeout")
+		LogErrorEvent(Cat, "image.processtimeout", "")
 		l4g.Error("%s; rcv(url:%s)", err, uri)
 		return
 	}
@@ -118,6 +132,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		l4g.Error(err1)
 		tran.AddData("response", err1.Error())
 		err = errors.New("response.writeerror")
+		LogErrorEvent(Cat, "response.writeerror", err1.Error())
 		return
 	}
 }
@@ -125,7 +140,8 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 func CycleHandleImage() {
 	defer func() {
 		if err := recover(); err != nil {
-			log(CatInstance, "imagehandler->cyclehandleimage", err)
+			l4g.Error("%s -- %s", "handleimage.recovererror", err)
+			LogErrorEvent(CatInstance, "handleimage.recovererror", fmt.Sprintf("%v", err))
 			go CycleHandleImage()
 		}
 	}()
@@ -136,7 +152,8 @@ func CycleHandleImage() {
 		chain := imgHd.chain
 		image := imgHd.inImg
 		if err := chainProcImg(imgHd.CatInstance, chain, image); err != nil {
-			log(imgHd.CatInstance, "imagehandler->cyclehandleimage->for", err)
+			l4g.Error("%s -- %s", "handleimage.processerror", err)
+			LogErrorEvent(imgHd.CatInstance, "handleimage.processerror", err.Error())
 			status = false
 		}
 		imgHd.status <- status
@@ -146,8 +163,8 @@ func CycleHandleImage() {
 func chainProcImg(catinstance cat.Cat, chain *proc.ProcessorChain, img *img4g.Image) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = r.(error)
-			log(catinstance, "imagehandler->chainprocimg", r)
+			l4g.Error("%s -- %s", "processimage.recovererror", err)
+			LogErrorEvent(catinstance, "processimage.recovererror", fmt.Sprintf("%v", r))
 		}
 	}()
 	defer img.DestoryWand()
@@ -175,9 +192,4 @@ func FindStorage(params map[string]string) (storage.Storage, string, error) {
 	sourceType, _, path := ParseUri(srcPath)
 	s, err := GetStorage(sourceType, path+"."+format)
 	return s, sourceType, err
-}
-
-func log(catinstance cat.Cat, msg string, err interface{}) {
-	l4g.Error("%s -- %s", msg, err)
-	catinstance.LogPanic(err)
 }

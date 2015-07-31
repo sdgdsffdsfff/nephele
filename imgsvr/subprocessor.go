@@ -1,6 +1,7 @@
 package imgsvr
 
 import (
+	"fmt"
 	l4g "github.com/alecthomas/log4go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"net/http"
@@ -19,7 +20,8 @@ type SubProcessor struct {
 func (this *SubProcessor) Run() {
 	defer func() {
 		if err := recover(); err != nil {
-			this.log(JoinString("sbuprocessor->run(port:", this.Port, ",hostport:", this.HostPort, ")"), err)
+			l4g.Error("%s -- %s", JoinString("workerprocess->run(port:", this.Port, ",hostport:", this.HostPort, ")"), err)
+			LogErrorEvent(CatInstance, "workprocess.recovererror", fmt.Sprintf("%v", err))
 		}
 	}()
 	c := make(chan os.Signal, 1)
@@ -67,8 +69,10 @@ func (this *SubProcessor) handleHeartbeart(w http.ResponseWriter, request *http.
 func (this *SubProcessor) sendStats() {
 	defer func() {
 		if err := recover(); err != nil {
-			this.log(JoinString("subprocessor->sendStats(port:", this.Port, ")"), err)
+			l4g.Error("%s -- %s", JoinString("workprocess->sendStats(port:", this.Port, ")"), err)
+			LogErrorEvent(CatInstance, "workprocess.sendstats", fmt.Sprintf("%v", err))
 			this.sendStats()
+
 		}
 	}()
 	for {
@@ -84,12 +88,8 @@ func (this *SubProcessor) sendStats() {
 		_, err := PostHttp(uri, data)
 		if err != nil {
 			// handle error
-			this.log(JoinString("subprocessor->sendStats->posthttp(port:", this.Port, ")"), err)
+			l4g.Error("%s -- %s", JoinString("workprocess->sendStats(port:", this.Port, ")"), err)
+			LogErrorEvent(CatInstance, "workprocess.sendstats", err.Error())
 		}
 	}
-}
-
-func (this *SubProcessor) log(msg string, err interface{}) {
-	l4g.Error("%s -- %s", msg, err)
-	CatInstance.LogPanic(err)
 }

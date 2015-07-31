@@ -261,3 +261,19 @@ func GetStats() map[string]string {
 		"NumGC":        strconv.Itoa(int(mem.NumGC)),
 	}
 }
+
+func LogErrorEvent(cat cat.Cat, name string, err string) {
+	event := cat.NewEvent("Error", name)
+	event.AddData("detail", err)
+	event.SetStatus("ERROR")
+	event.Complete()
+}
+
+func LogEvent(cat cat.Cat, title string, name string, data map[string]string) {
+	event := cat.NewEvent(title, name)
+	for k, v := range data {
+		event.AddData(k, v)
+	}
+	event.SetStatus("0")
+	event.Complete()
+}

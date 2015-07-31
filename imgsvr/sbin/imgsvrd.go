@@ -20,6 +20,9 @@ func main() {
 	if cmd == "-stop" {
 		stop()
 	}
+	if cmd == "-nginx" {
+		modifyNginx()
+	}
 	if cmd == "-h" {
 		h()
 	}
@@ -29,6 +32,25 @@ func main() {
 	if cmd == "-reload" {
 		reload()
 	}
+}
+
+func modifyNginx() {
+	if len(os.Args) < 3 {
+		l4g.Info("usage:params isn't invalid")
+		os.Exit(1)
+	}
+	nginxPath := os.Args[2]
+	nginxPort := "80"
+	if len(os.Args) > 3 {
+		nginxPort = os.Args[3]
+	}
+	hostprocess := &imgsvr.HostProcessor{
+		Port:        0,
+		ThreadCount: 0,
+		NginxPath:   nginxPath,
+		NginxPort:   nginxPort,
+	}
+	hostprocess.ModifyNginxconf()
 }
 
 func reload() {
