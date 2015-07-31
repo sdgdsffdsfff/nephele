@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+#
+# chkconfig: 2345 99 90
+# description: Activates/Deactivates all network interfaces configured to \
+#              start at boot time.
+#
+#
+basedir='/home/op1/imagecloud/src/github.com/ctripcorp/nephele/imgsvr/sbin/'
+port=9001
+getPid(){
+	pidCount=`ps -ef|grep 'imgsvrd.go -h' -c`
+	if [ $pidCount -gt 1 ];then
+		pid=`ps -ef|grep 'imgsvrd.go -h'|awk 'NR==1{print $2}'`
+	else
+		pid='0'
+	fi
+	echo $pid
+}
+
+check(){
+	if [ `getPid` -gt 0 ];then
+		echo "imagecloud is running..."
+		exit 0
+	else
+		echo "imagecloud is stoped..."
+		exit 3
+	fi	
+}
+start(){
+	imgbash=""$basedir"/imgsvrd.sh"
+	chmod +x $imgbash
+	if [ `getPid` -gt 0 ];then
+		kill -9 `getPid`
+		sleep 2
+		(cd $basedir;nohup $imgbash -h $port >/dev/null 2>&1 &)
+		sleep 2
+		[ `getPid` -gt 0 ]&&echo "start ok"||echo "start faile,please check"
+	else
+		(cd $basedir;nohup $imgbash -h $port >/dev/null 2>&1 &)
+                sleep 2
+		[ `getPid` -gt 0 ]&&echo "start ok"||echo "start faile,please check"
+	fi
+}
+stop(){
+	pkill imgsvrd 
+	sleep 5
+	[ `getPid` -gt 0 ]&&echo "stop faile,please check"||echo "stop ok"
+}
+status(){
+	check
+}
+restart(){
+	stop
+	start
+}
+case $1 in
+	start)
+	start
+	;;
+	stop)
+	stop
+	;;
+	status)
+	status
+	;;
+	restart)
+	restart
+	;;
+	*)
+	echo "input error,like this:imagecloud [start|stop|status|restart]"
+	;;
+esac
