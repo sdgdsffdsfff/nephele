@@ -8,11 +8,9 @@ import (
 )
 
 type ResizeCProcessor struct {
-	Width     int64
-	Height    int64
-	Cat       cat.Cat
-	imgWidth  int64
-	imgHeight int64
+	Width  int64
+	Height int64
+	Cat    cat.Cat
 }
 
 func (this *ResizeCProcessor) Process(img *img4g.Image) error {
@@ -24,15 +22,10 @@ func (this *ResizeCProcessor) Process(img *img4g.Image) error {
 		tran.Complete()
 	}()
 
-	var width, height = this.imgWidth, this.imgHeight
-	var wd, ht int64
-	if width == 0 || height == 0 {
-		wd, ht, err = img.Size()
-		if err != nil {
-			return err
-		}
-		width = wd
-		height = ht
+	width, height, err1 := img.Size()
+	if err1 != nil {
+		err = err1
+		return err1
 	}
 
 	p1 := float64(this.Width) / float64(this.Height)

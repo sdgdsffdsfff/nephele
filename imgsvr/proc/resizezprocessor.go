@@ -8,11 +8,9 @@ import (
 )
 
 type ResizeZProcessor struct {
-	Width     int64
-	Height    int64
-	Cat       cat.Cat
-	imgWidth  int64
-	imgHeight int64
+	Width  int64
+	Height int64
+	Cat    cat.Cat
 }
 
 //高固定，宽（原图比例计算），宽固定，高（原图比例计算） （压缩）
@@ -25,16 +23,12 @@ func (this *ResizeZProcessor) Process(img *img4g.Image) error {
 		tran.Complete()
 	}()
 
-	var width, height = this.imgWidth, this.imgHeight
-	if this.imgWidth == 0 || this.imgHeight == 0 {
-		var wd, ht int64
-		wd, ht, err = img.Size()
-		if err != nil {
-			return err
-		}
-		width = wd
-		height = ht
+	width, height, err1 := img.Size()
+	if err1 != nil {
+		err = err1
+		return err1
 	}
+
 	p1 := float64(this.Width) / float64(this.Height)
 	p2 := float64(width) / float64(height)
 	w, h := this.Width, this.Height

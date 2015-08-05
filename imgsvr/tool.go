@@ -27,6 +27,7 @@ var (
 	Hotel       = "hotel"
 	Globalhotel = "globalhotel"
 	TG          = "tg"
+	Reboot      = "Reboot"
 	CatInstance = cat.Instance()
 	fdfsUrl     = util.RegexpExt{regexp.MustCompile("fd/([a-zA-Z]+)/(.*)")}
 	nfs1Url     = util.RegexpExt{regexp.MustCompile("t1/([a-zA-Z]+)/(.*)")}
@@ -120,7 +121,12 @@ func GetImage(storageType string, path string) ([]byte, error) {
 	return srg.GetImage()
 }
 
+var localIP string = ""
+
 func GetIP() string {
+	if localIP != "" {
+		return localIP
+	}
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return ""
@@ -132,6 +138,7 @@ func GetIP() string {
 		}
 		first := strings.Split(add, ".")[0]
 		if _, err := strconv.Atoi(first); err == nil {
+			localIP = add
 			return add
 		}
 	}
@@ -271,8 +278,10 @@ func LogErrorEvent(cat cat.Cat, name string, err string) {
 
 func LogEvent(cat cat.Cat, title string, name string, data map[string]string) {
 	event := cat.NewEvent(title, name)
-	for k, v := range data {
-		event.AddData(k, v)
+	if data != nil {
+		for k, v := range data {
+			event.AddData(k, v)
+		}
 	}
 	event.SetStatus("0")
 	event.Complete()

@@ -1,3 +1,3 @@
 package proc
 
-var Image string = "Image.Command"
+var Image string = "Command"

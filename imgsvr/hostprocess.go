@@ -60,6 +60,7 @@ func (this *HostProcessor) Run() {
 	hostPost = strconv.Itoa(this.Port)
 	threadcount := strconv.Itoa(this.ThreadCount)
 	l4g.Debug(JoinString("Port:", hostPost, " threadcount:", threadcount, " nginxpath:", this.NginxPath, " nginxport:", this.NginxPort))
+
 	defer func() {
 		if err := recover(); err != nil {
 			l4g.Error("%s -- %s", JoinString("daemonprocess->run(port:", hostPost, ",threadcount:", threadcount, ",)"), err)
@@ -67,6 +68,16 @@ func (this *HostProcessor) Run() {
 		}
 		os.Exit(2)
 	}()
+	func() {
+		Cat := cat.Instance()
+		tran := Cat.NewTransaction("System", Reboot)
+		defer func() {
+			tran.SetStatus("0")
+			tran.Complete()
+		}()
+		LogEvent(Cat, Reboot, JoinString(GetIP(), ":", hostPost), nil)
+	}()
+
 	this.computePorts()
 	if this.NginxPath != "" {
 		if err := ModifyNginxconf(this.NginxPath, this.NginxPort, ports); err != nil {

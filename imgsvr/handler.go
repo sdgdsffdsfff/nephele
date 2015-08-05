@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,8 +29,8 @@ type Handler struct {
 func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	Cat := cat.Instance()
 	handler.ChainBuilder = &ProcChainBuilder{Cat}
-	tran := Cat.NewTransaction("Image.Request", "Request")
 	uri := request.URL.String()
+	tran := Cat.NewTransaction("URL", getShortUri(uri))
 	var (
 		err error
 	)
@@ -51,18 +52,17 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			http.Error(writer, http.StatusText(404), 404)
 		}
 	}()
-	data := map[string]string{
+
+	LogEvent(Cat, "URL", "URL.client", map[string]string{
 		"referer":    request.Referer(),
 		"proto":      request.Proto,
-		"agent":      request.UserAgent(),
 		"remoteaddr": request.RemoteAddr,
-	}
-	LogEvent(Cat, "URL", "URL.client", data)
+		"agent":      request.UserAgent(),
+	})
 
-	data1 := map[string]string{
+	LogEvent(Cat, "URL", "URL.method", map[string]string{
 		"Http": request.Method + " " + uri,
-	}
-	LogEvent(Cat, "URL", "URL.method", data1)
+	})
 	params, ok1 := legalUrl.FindStringSubmatchMap(uri)
 	if !ok1 {
 		err = errors.New("uri.parseerror")
@@ -85,23 +85,28 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	getimagetran := Cat.NewTransaction("Image.Storage", storagetype)
-	bts, err1 := store.GetImage()
-	if err1 != nil {
-		getimagetran.AddData("getimage", err1.Error())
-		LogErrorEvent(Cat, storagetype+".readerror", err1.Error())
-		err = errors.New(storagetype + ".readerror")
-		l4g.Error("%s -- %s; rcv(url:%s)", "getimage", err1, uri)
-		getimagetran.SetStatus(err)
+	var bts []byte
+	func() {
+		var err1 error
+		getimagetran := Cat.NewTransaction("Storage", storagetype)
+		defer func() {
+			if err1 != nil {
+				l4g.Error("%s -- %s; rcv(url:%s)", "getimage", err1, uri)
+				LogErrorEvent(Cat, storagetype+".readerror", err1.Error())
+				err = errors.New(storagetype + ".readerror")
+			}
+			getimagetran.SetStatus(err)
+			getimagetran.Complete()
+		}()
+		bts, err1 = store.GetImage()
+	}()
+	if err != nil {
 		return
-	} else {
-		getimagetran.SetStatus("0")
 	}
-	getimagetran.Complete()
 	size := len(bts)
 	sizestr := strconv.Itoa(size)
 	tran.AddData("size", sizestr)
-	Cat.LogEvent("Image.Size", GetImageSizeDistribution(size))
+	Cat.LogEvent("Size", GetImageSizeDistribution(size))
 
 	l4g.Debug("get image length(%d) rcv(url:%s)", size, request.URL.String())
 	format, _ := params["ext"]
@@ -192,4 +197,16 @@ func FindStorage(params map[string]string) (storage.Storage, string, error) {
 	sourceType, _, path := ParseUri(srcPath)
 	s, err := GetStorage(sourceType, path+"."+format)
 	return s, sourceType, err
+}
+
+func getShortUri(uri string) string {
+	arr := strings.Split(uri, "/")
+	if len(arr) < 4 {
+		return uri
+	}
+	if arr[2] == "fd" || arr[2] == "t1" {
+		return JoinString("/", arr[1], "/", arr[2], "/", arr[3])
+	} else {
+		return JoinString("/", arr[1], "/", arr[2])
+	}
 }

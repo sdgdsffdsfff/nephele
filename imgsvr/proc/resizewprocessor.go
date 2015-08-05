@@ -4,6 +4,7 @@ import (
 	l4g "github.com/alecthomas/log4go"
 	"github.com/ctripcorp/cat"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
+	"math"
 )
 
 type ResizeWProcessor struct {
@@ -29,7 +30,21 @@ func (this *ResizeWProcessor) Process(img *img4g.Image) error {
 	if width <= this.Width && height <= this.Height {
 		return nil
 	}
-	z := ResizeZProcessor{this.Width, this.Height, this.Cat, width, height}
-	err = z.Process(img)
+
+	p1 := float64(this.Width) / float64(this.Height)
+	p2 := float64(width) / float64(height)
+	w, h := this.Width, this.Height
+	if p2 > p1 {
+		h = int64(math.Floor(float64(this.Width) / p2))
+		if int64(math.Abs(float64(h-this.Height))) < 3 {
+			h = this.Height
+		}
+	} else {
+		w = int64(math.Floor(float64(this.Height) * p2))
+		if int64(math.Abs(float64(w-this.Width))) < 3 {
+			w = this.Width
+		}
+	}
+	err = img.Resize(w, h)
 	return err
 }
