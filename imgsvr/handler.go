@@ -54,10 +54,10 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}()
 
 	LogEvent(Cat, "URL", "URL.client", map[string]string{
-		"referer":    request.Referer(),
-		"proto":      request.Proto,
-		"remoteaddr": request.RemoteAddr,
-		"agent":      request.UserAgent(),
+		"clientip": GetClientIP(request),
+		"referer":  request.Referer(),
+		"proto":    request.Proto,
+		"agent":    request.UserAgent(),
 	})
 
 	LogEvent(Cat, "URL", "URL.method", map[string]string{
@@ -132,6 +132,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	writer.Header().Set("Content-Type", "image/"+format)
 	writer.Header().Set("Content-Length", strconv.Itoa(len(img.Blob)))
+	writer.Header().Set("Last-Modified", "2015/1/1 01:01:01")
 	l4g.Debug("final size->>>" + strconv.Itoa(len(img.Blob)))
 	if _, err1 = writer.Write(img.Blob); err1 != nil {
 		l4g.Error(err1)

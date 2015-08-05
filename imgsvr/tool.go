@@ -145,6 +145,17 @@ func GetIP() string {
 	return ""
 }
 
+func GetClientIP(req *http.Request) string {
+	addr := req.Header.Get("X-Real-IP")
+	if addr == "" {
+		addr = req.Header.Get("X-Forwarded-For")
+		if addr == "" {
+			addr = req.RemoteAddr
+		}
+	}
+	return addr
+}
+
 func GetHttp(url string) ([]byte, error) {
 	timeout := time.Duration(time.Second)
 	client := http.Client{
