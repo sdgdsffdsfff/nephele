@@ -77,5 +77,5 @@ func (this *hotelrotatefeature) Process() (proc.ImageProcessor, bool, error) {
 	if strings.Contains(opacitiesStr, checkstr) {
 		return nil, false, nil
 	}
-	return nil, false, errors.New(JoinString("channel: hotel, reason: not support rotate(", strconv.FormatFloat(this.rotate, 'f', -1, 64), ")"))
+	return nil, false, errors.New(JoinString("channel: hotel, reason: not support rotate degree", strconv.FormatFloat(this.rotate, 'f', -1, 64)))
 }
