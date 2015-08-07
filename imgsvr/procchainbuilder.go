@@ -175,7 +175,7 @@ func (this *ProcChainBuilder) getValidSizeParam(widthVal, heightVal, cmdVal, cha
 	}
 
 	if !strings.Contains(resizetypes, cmdVal) {
-		return 0, 0, errors.New(JoinString("channel(", channel, ") not supported type(", cmdVal, ")"))
+		return 0, 0, errors.New(JoinString("channel: ", channel, ", reason: not support type ", cmdVal))
 	}
 
 	//check size
@@ -185,7 +185,7 @@ func (this *ProcChainBuilder) getValidSizeParam(widthVal, heightVal, cmdVal, cha
 	}
 	var wh = JoinString(",", widthVal, "x", heightVal, ",")
 	if !strings.Contains(sizes, wh) {
-		return 0, 0, errors.New(JoinString("channel[", channel, "] not supported size(", wh, ")"))
+		return 0, 0, errors.New(JoinString("channel: ", channel, ", reason: not support size ", wh))
 	}
 	return width, height, nil
 }
@@ -224,7 +224,7 @@ func (this *ProcChainBuilder) getRotateProcessor(channel string, params map[stri
 		return nil, err
 	}
 	if !strings.Contains(rotateStr, JoinString(",", rotate, ",")) {
-		return nil, errors.New(JoinString("channel(", channel, ") not supported degress(", rotate, ")"))
+		return nil, errors.New(JoinString("channel: ", channel, ", reason: not support degress ", rotate))
 	}
 
 	return &proc.RotateProcessor{degress, this.Cat}, nil
@@ -242,7 +242,7 @@ func (this *ProcChainBuilder) getQualityProcessor(channel string, params map[str
 			return nil, err
 		}
 		if !strings.Contains(qualitiesStr, JoinString(",", qualityStr, ",")) {
-			return nil, errors.New(JoinString("channel(", channel, ") not supporte quality(", qualityStr, ")"))
+			return nil, errors.New(JoinString("channel: ", channel, ", reason: not support quality ", qualityStr))
 		}
 	} else {
 		qualityStr, err = data.GetQuality(channel)
@@ -310,7 +310,7 @@ func (this *ProcChainBuilder) getLogoWaterMarkProcessor(channel string, params m
 		return nil, err
 	}
 	if !strings.Contains(logonames, JoinString(",", wn, ",")) {
-		return nil, errors.New(JoinString("Not supported this watermarkname(", wn, ")"))
+		return nil, errors.New(JoinString("channel: ", channel, ", reason: not support watermark ", wn))
 	}
 	//check size
 	lesswidth, err := data.GetImagelesswidthForLogo(channel)
