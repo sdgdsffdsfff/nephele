@@ -32,7 +32,8 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	uri := request.URL.String()
 	tran := Cat.NewTransaction("URL", getShortUri(uri))
 	var (
-		err error
+		err       error
+		isSuccess bool = true
 	)
 	defer func() {
 		p := recover()
@@ -41,22 +42,24 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			Cat.LogPanic(p)
 			tran.SetStatus(p)
 		}
-		if err != nil {
-			tran.SetStatus(err)
-		}
-		if p == nil && err == nil {
+
+		if isSuccess {
 			tran.SetStatus("0")
 			tran.Complete()
 		} else {
+			tran.SetStatus(err)
 			tran.Complete()
+		}
+		if p != nil || err != nil {
 			http.Error(writer, http.StatusText(404), 404)
 		}
 	}()
 
 	LogEvent(Cat, "URL", "URL.client", map[string]string{
 		"clientip": GetClientIP(request),
-		"referer":  request.Referer(),
+		"serverip": GetIP(),
 		"proto":    request.Proto,
+		"referer":  request.Referer(),
 		"agent":    request.UserAgent(),
 	})
 
@@ -66,22 +69,22 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	params, ok1 := legalUrl.FindStringSubmatchMap(uri)
 	if !ok1 {
 		err = errors.New("uri.parseerror")
-		LogEvent(Cat, "Error", "uri.parseerror", make(map[string]string))
 		l4g.Error("%s; rcv(url:%s)", err, uri)
+		LogErrorEvent(Cat, "uri.parseerror", "")
 		return
 	}
 	store, storagetype, err1 := FindStorage(params)
 	if err1 != nil {
 		err = errors.New("storage.parseerror")
-		LogEvent(Cat, "Error", "storage.parseerror", map[string]string{"detail": err1.Error()})
 		l4g.Error("%s; rcv(url:%s)", err1, uri)
+		LogErrorEvent(Cat, "storage.parseerror", err1.Error())
 		return
 	}
 	chain, err1 := handler.ChainBuilder.Build(params)
 	if err1 != nil {
-		LogEvent(Cat, "Error", "procchain.build", map[string]string{"detail": err1.Error()})
 		err = errors.New("procchain.builderror")
 		l4g.Error("%s; rcv(url:%s)", err1, uri)
+		LogErrorEvent(Cat, "procchain.builderror", err1.Error())
 		return
 	}
 
@@ -92,8 +95,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		defer func() {
 			if err1 != nil {
 				l4g.Error("%s -- %s; rcv(url:%s)", "getimage", err1, uri)
-				LogErrorEvent(Cat, storagetype+".readerror", err1.Error())
 				err = errors.New(storagetype + ".readerror")
+				isSuccess = false
+				LogErrorEvent(Cat, storagetype+".readerror", err1.Error())
 			}
 			getimagetran.SetStatus(err)
 			getimagetran.Complete()
@@ -119,15 +123,16 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	select {
 	case ok := <-status:
 		if !ok {
-			err = errors.New("image.processerror")
-			LogErrorEvent(Cat, "image.processerror", "")
+			err = errors.New("processerror")
+			isSuccess = false
 			l4g.Error("%s; rcv(url:%s)", err, uri)
 			return
 		}
 	case <-time.After(time.Second * 5):
-		err = errors.New("image.processtimeout")
-		LogErrorEvent(Cat, "image.processtimeout", "")
+		err = errors.New("processtimeout")
 		l4g.Error("%s; rcv(url:%s)", err, uri)
+		isSuccess = false
+		LogErrorEvent(Cat, "processtimeout", "")
 		return
 	}
 	writer.Header().Set("Content-Type", "image/"+format)
@@ -136,9 +141,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	l4g.Debug("final size->>>" + strconv.Itoa(len(img.Blob)))
 	if _, err1 = writer.Write(img.Blob); err1 != nil {
 		l4g.Error(err1)
-		tran.AddData("response", err1.Error())
 		err = errors.New("response.writeerror")
 		LogErrorEvent(Cat, "response.writeerror", err1.Error())
+		isSuccess = false
 		return
 	}
 }
@@ -158,8 +163,8 @@ func CycleHandleImage() {
 		chain := imgHd.chain
 		image := imgHd.inImg
 		if err := chainProcImg(imgHd.CatInstance, chain, image); err != nil {
-			l4g.Error("%s -- %s", "handleimage.processerror", err)
-			LogErrorEvent(imgHd.CatInstance, "handleimage.processerror", err.Error())
+			l4g.Error("%s -- %s", "processerror", err)
+			LogErrorEvent(imgHd.CatInstance, "processerror", err.Error())
 			status = false
 		}
 		imgHd.status <- status
