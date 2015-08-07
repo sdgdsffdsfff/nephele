@@ -224,7 +224,7 @@ func (this *ProcChainBuilder) getRotateProcessor(channel string, params map[stri
 		return nil, err
 	}
 	if !strings.Contains(rotateStr, JoinString(",", rotate, ",")) {
-		return nil, errors.New(JoinString("channel: ", channel, ", reason: not support degress ", rotate))
+		return nil, errors.New(JoinString("channel: ", channel, ", reason: not support rotate degree ", rotate))
 	}
 
 	return &proc.RotateProcessor{degress, this.Cat}, nil
