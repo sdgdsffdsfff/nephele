@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"io"
 	"net"
+	"time"
 )
 
 const (
@@ -156,7 +156,7 @@ type reqHeader struct {
 	status int8
 }
 
-func (this *reqHeader) marshal() ([]byte) {
+func (this *reqHeader) marshal() []byte {
 	buffer := new(bytes.Buffer)
 	binary.Write(buffer, binary.BigEndian, this.pkgLen)
 	buffer.WriteByte(byte(this.cmd))
@@ -179,6 +179,9 @@ func (this *reqHeader) unmarshal(data []byte) error {
 
 func (this *reqHeader) send(conn net.Conn) error {
 	buf := this.marshal()
+	if err := conn.SetWriteDeadline(time.Now().Add(time.Second * 30)); err != nil {
+		return err
+	}
 	if _, err := conn.Write(buf); err != nil {
 		return err
 	}
@@ -186,8 +189,8 @@ func (this *reqHeader) send(conn net.Conn) error {
 }
 
 func (this *reqHeader) recv(conn net.Conn) error {
-	buf := make([]byte, 10)
-	if _, err := io.ReadFull(conn, buf); err != nil {
+	buf, err := tcpReadLength(conn, 10)
+	if err != nil {
 		return err
 	}
 	if err := this.unmarshal(buf); err != nil {
@@ -196,16 +199,15 @@ func (this *reqHeader) recv(conn net.Conn) error {
 	return nil
 }
 
-
 type downloadReq struct {
-	offset         int64
-	downloadSize   int64
-	groupName      string
-	fileName string
+	offset       int64
+	downloadSize int64
+	groupName    string
+	fileName     string
 }
 
 // #down_fmt: |-offset(8)-download_bytes(8)-group_name(16)-remote_filename(len)-|
-func (this *downloadReq) marshal() ([]byte) {
+func (this *downloadReq) marshal() []byte {
 	buffer := new(bytes.Buffer)
 	binary.Write(buffer, binary.BigEndian, this.offset)
 	binary.Write(buffer, binary.BigEndian, this.downloadSize)
@@ -229,7 +231,7 @@ func (this *downloadReq) marshal() ([]byte) {
 }
 
 type downloadRsp struct {
-	fileId string
+	fileId       string
 	content      interface{}
 	downloadSize int64
 }

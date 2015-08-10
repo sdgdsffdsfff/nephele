@@ -4,9 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"net"
+	"os"
 	"strings"
+	"time"
 )
 
 type Errno struct {
@@ -64,7 +65,6 @@ func splitRemoteFileId(remoteFileId string) ([]string, error) {
 	return parts, nil
 }
 
-
 func tcpSendData(conn net.Conn, bytesStream []byte) error {
 	if _, err := conn.Write(bytesStream); err != nil {
 		return err
@@ -103,6 +103,9 @@ func tcpRecvResponse(conn net.Conn, bufferSize int64) ([]byte, int64, error) {
 	recvBuff := make([]byte, 0, bufferSize)
 	tmp := make([]byte, 256)
 	var total int64
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second * 30)); err != nil {
+		return nil, 0, err
+	}
 	for {
 		n, err := conn.Read(tmp)
 		total += int64(n)
@@ -120,6 +123,23 @@ func tcpRecvResponse(conn net.Conn, bufferSize int64) ([]byte, int64, error) {
 	return recvBuff, total, nil
 }
 
+// tcpReadLength reads all of data or returns an error
+func tcpReadLength(conn net.Conn, length int) ([]byte, error) {
+	data := make([]byte, length)
+	index := 0
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second * 30)); err != nil {
+		return nil, err
+	}
+	for index < length {
+		n, err := conn.Read(data[index:])
+		if err != nil {
+			return nil, err
+		}
+		index += n
+	}
+	return data, nil
+}
+
 func tcpRecvFile(conn net.Conn, localFilename string, bufferSize int64) (int64, error) {
 	file, err := os.Create(localFilename)
 	if err != nil {
@@ -133,5 +153,3 @@ func tcpRecvFile(conn net.Conn, localFilename string, bufferSize int64) (int64, 
 	}
 	return total, nil
 }
-
-

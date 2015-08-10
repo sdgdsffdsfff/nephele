@@ -14,15 +14,13 @@ type poolInfo struct {
 	maxConns int
 }
 
-func (this *poolInfo) makeConn() (conn net.Conn, err error) {
+func (this *poolInfo) makeConn() (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", this.host, this.port)
-	//try two times
-	for i := 0; i < 2; i++ {
-		if conn, err = net.DialTimeout("tcp", addr, time.Minute); err == nil {
-			return
-		}
+	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
+	if err != nil {
+		return nil, err
 	}
-	return
+	return conn, nil
 }
 
 func (this *poolInfo) newPool() (pool.Pool, error) {
