@@ -2,6 +2,7 @@ package fdfs
 
 import (
 	"fmt"
+	"github.com/ctripcorp/cat"
 	"github.com/ctripcorp/ghost/pool"
 	"net"
 	"time"
@@ -15,11 +16,20 @@ type poolInfo struct {
 }
 
 func (this *poolInfo) makeConn() (net.Conn, error) {
+	Cat := cat.Instance()
 	addr := fmt.Sprintf("%s:%d", this.host, this.port)
 	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
+		event := Cat.NewEvent("DialFdfs", "Fail")
+		event.AddData("detail", err.Error())
+		event.SetStatus("ERROR")
+		event.Complete()
 		return nil, err
 	}
+	event := Cat.NewEvent("DialFdfs", "Success")
+	event.SetStatus("0")
+	event.Complete()
+	return nil, err
 	return conn, nil
 }
 
