@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"time"
+	"io"
 )
 
 const (
@@ -189,8 +190,11 @@ func (this *reqHeader) send(conn net.Conn) error {
 }
 
 func (this *reqHeader) recv(conn net.Conn) error {
-	buf, err := tcpReadLength(conn, 10)
-	if err != nil {
+	buf := make([]byte, 10)
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second * 30)); err != nil {
+		return err
+	}
+	if _, err := io.ReadFull(conn, buf); err != nil {
 		return err
 	}
 	if err := this.unmarshal(buf); err != nil {

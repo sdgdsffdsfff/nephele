@@ -123,23 +123,6 @@ func tcpRecvResponse(conn net.Conn, bufferSize int64) ([]byte, int64, error) {
 	return recvBuff, total, nil
 }
 
-// tcpReadLength reads all of data or returns an error
-func tcpReadLength(conn net.Conn, length int) ([]byte, error) {
-	data := make([]byte, length)
-	index := 0
-	if err := conn.SetReadDeadline(time.Now().Add(time.Second * 30)); err != nil {
-		return nil, err
-	}
-	for index < length {
-		n, err := conn.Read(data[index:])
-		if err != nil {
-			return nil, err
-		}
-		index += n
-	}
-	return data, nil
-}
-
 func tcpRecvFile(conn net.Conn, localFilename string, bufferSize int64) (int64, error) {
 	file, err := os.Create(localFilename)
 	if err != nil {
