@@ -87,14 +87,14 @@ func (this *fdfsClient) getStorage(ip string, port int) (*storageClient, error) 
 		this.mutex.Lock()
 		defer this.mutex.Unlock()
 		//reconfirm wheather the storage exists
-		if sc, ok := this.storages[key]; ok {
-			return sc
+		if sc, ok := this.storages[storageKey]; ok {
+			return sc, nil
 		} else {
 			sc, err := newStorageClient(ip, port)
 			if err != nil {
 				return nil, err
 			}
-			this.storages[key] = sc
+			this.storages[storageKey] = sc
 			return sc, nil
 		}
 	}
