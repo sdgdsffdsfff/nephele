@@ -3,28 +3,33 @@ package fdfs
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"github.com/ctripcorp/cat"
 	"github.com/ctripcorp/ghost/pool"
 	"net"
+	"time"
 )
 
 const (
-	TRACKER_MIN_CONN int = 5
-	TRACKER_MAX_CONN int = 5
+	TRACKER_MIN_CONN int           = 5
+	TRACKER_MAX_CONN int           = 5
+	TRACKER_MAX_IDLE time.Duration = 10 * time.Minute
 )
 
 type trackerClient struct {
-	*poolInfo
+	host string
+	port int
 	pool.Pool
 }
 
 func newTrackerClient(host string, port int) (*trackerClient, error) {
-	pInfo := &poolInfo{host, port, TRACKER_MIN_CONN, TRACKER_MAX_CONN}
-	p, err := pInfo.newPool()
+	client := &trackerClient{host:host, port:port}
+	p, err := pool.NewBlockingPool(TRACKER_MIN_CONN, TRACKER_MAX_CONN, TRACKER_MAX_IDLE, client.makeConn)
 	if err != nil {
 		return nil, err
 	}
-	return &trackerClient{pInfo, p}, nil
-
+	client.Pool = p
+	return client, nil
 }
 
 //fetch a  download stroage from tracker
@@ -97,4 +102,23 @@ func (this *trackerClient) trackerQueryStorage(groupName string, fileName string
 	binary.Read(buff, binary.BigEndian, &port)
 	binary.Read(buff, binary.BigEndian, &storePathIndex)
 	return &storageInfo{ipAddr, int(port), groupName, int(storePathIndex)}, nil
+}
+
+func (this *trackerClient) makeConn() (net.Conn, error) {
+	Cat := cat.Instance()
+	addr := fmt.Sprintf("%s:%d", this.host, this.port)
+	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
+	if err != nil {
+		event := Cat.NewEvent("DialTracker", "Fail")
+		event.AddData("addr", addr)
+		event.AddData("detail", err.Error())
+		event.SetStatus("ERROR")
+		event.Complete()
+		return nil, err
+	}
+	event := Cat.NewEvent("DialTracker", "Success")
+	event.AddData("addr", addr)
+	event.SetStatus("0")
+	event.Complete()
+	return conn, nil
 }

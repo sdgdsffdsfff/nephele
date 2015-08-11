@@ -3,28 +3,33 @@ package fdfs
 import (
 	"errors"
 	"fmt"
+	"github.com/ctripcorp/cat"
 	"github.com/ctripcorp/ghost/pool"
 	"net"
 	"os"
+	"time"
 )
 
 const (
-	STORAGE_MIN_CONN int = 5
-	STORAGE_MAX_CONN int = 5
+	STORAGE_MIN_CONN int           = 5
+	STORAGE_MAX_CONN int           = 5
+	STORAGE_MAX_IDLE time.Duration = 10 * time.Minute
 )
 
 type storageClient struct {
-	*poolInfo
+	host string
+	port int
 	pool.Pool
 }
 
 func newStorageClient(host string, port int) (*storageClient, error) {
-	pInfo := &poolInfo{host, port, STORAGE_MIN_CONN, STORAGE_MAX_CONN}
-	p, err := pInfo.newPool()
+	client := &storageClient{host:host, port:port}
+	p, err := pool.NewBlockingPool(STORAGE_MIN_CONN, STORAGE_MAX_CONN, STORAGE_MAX_IDLE, client.makeConn)
 	if err != nil {
 		return nil, err
 	}
-	return &storageClient{pInfo, p}, nil
+	client.Pool = p
+	return client, nil
 
 }
 
@@ -115,4 +120,23 @@ func (this *storageClient) storageDownload(storeInfo *storageInfo, fileContent i
 	}
 	dr.downloadSize = recvSize
 	return dr, nil
+}
+
+func (this *storageClient) makeConn() (net.Conn, error) {
+	Cat := cat.Instance()
+	addr := fmt.Sprintf("%s:%d", this.host, this.port)
+	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
+	if err != nil {
+		event := Cat.NewEvent("DialStorage", "Fail")
+		event.AddData("addr", addr)
+		event.AddData("detail", err.Error())
+		event.SetStatus("ERROR")
+		event.Complete()
+		return nil, err
+	}
+	event := Cat.NewEvent("DialStorage", "Success")
+	event.AddData("addr", addr)
+	event.SetStatus("0")
+	event.Complete()
+	return conn, nil
 }
