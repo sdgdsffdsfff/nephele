@@ -23,7 +23,7 @@ type trackerClient struct {
 }
 
 func newTrackerClient(host string, port int) (*trackerClient, error) {
-	client := &trackerClient{host:host, port:port}
+	client := &trackerClient{host: host, port: port}
 	p, err := pool.NewBlockingPool(TRACKER_MIN_CONN, TRACKER_MAX_CONN, TRACKER_MAX_IDLE, client.makeConn)
 	if err != nil {
 		return nil, err
@@ -107,17 +107,14 @@ func (this *trackerClient) trackerQueryStorage(groupName string, fileName string
 func (this *trackerClient) makeConn() (net.Conn, error) {
 	Cat := cat.Instance()
 	addr := fmt.Sprintf("%s:%d", this.host, this.port)
+	event := Cat.NewEvent("DialTracker", addr)
 	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
-		event := Cat.NewEvent("DialTracker", "Fail")
-		event.AddData("addr", addr)
 		event.AddData("detail", err.Error())
 		event.SetStatus("ERROR")
 		event.Complete()
 		return nil, err
 	}
-	event := Cat.NewEvent("DialTracker", "Success")
-	event.AddData("addr", addr)
 	event.SetStatus("0")
 	event.Complete()
 	return conn, nil

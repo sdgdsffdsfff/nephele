@@ -2,9 +2,9 @@ package fdfs
 
 import (
 	"fmt"
-	"sync"
 	"math/rand"
 	"strconv"
+	"sync"
 )
 
 type FdfsClient interface {
@@ -21,7 +21,7 @@ type fdfsClient struct {
 	tracker *trackerClient
 
 	//storage client map
-	storages map[string]*storageClient 
+	storages map[string]*storageClient
 
 	//use to read or write a storage client from map
 	mutex sync.RWMutex
@@ -32,7 +32,7 @@ type fdfsClient struct {
 func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error) {
 	//select a random tracker host from host list
 	host := trackerHosts[rand.Intn(len(trackerHosts))]
-	port,err := strconv.Atoi(trackerPort)
+	port, err := strconv.Atoi(trackerPort)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error
 	if err != nil {
 		return nil, err
 	}
-	return &fdfsClient{tracker:tc, storages:make(map[string]*storageClient)}, nil
+	return &fdfsClient{tracker: tc, storages: make(map[string]*storageClient)}, nil
 }
 
 func (this *fdfsClient) DownloadToBuffer(fileId string) ([]byte, error) {
@@ -80,16 +80,23 @@ func (this *fdfsClient) getStorage(ip string, port int) (*storageClient, error) 
 	storageKey := fmt.Sprintf("%s-%d", ip, port)
 
 	//if the storage with the key exists, return the stroage
-	//else create a new stroage and return  
+	//else create a new stroage and return
 	if sc := this.queryStorage(storageKey); sc != nil {
 		return sc, nil
 	} else {
-		sc, err := newStorageClient(ip, port)
-		if err != nil {
-			return nil, err
+		this.mutex.Lock()
+		defer this.mutex.Unlock()
+		//reconfirm wheather the storage exists
+		if sc, ok := this.storages[key]; ok {
+			return sc
+		} else {
+			sc, err := newStorageClient(ip, port)
+			if err != nil {
+				return nil, err
+			}
+			this.storages[key] = sc
+			return sc, nil
 		}
-		this.insertStorages(storageKey, sc)
-		return sc, nil
 	}
 }
 
@@ -104,11 +111,3 @@ func (this *fdfsClient) queryStorage(key string) *storageClient {
 		return nil
 	}
 }
-
-//insert the storage client into storage map with the specific key
-func (this *fdfsClient) insertStorages(key string, sc *storageClient) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	this.storages[key] = sc
-}
-

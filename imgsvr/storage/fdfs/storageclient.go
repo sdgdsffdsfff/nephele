@@ -23,7 +23,7 @@ type storageClient struct {
 }
 
 func newStorageClient(host string, port int) (*storageClient, error) {
-	client := &storageClient{host:host, port:port}
+	client := &storageClient{host: host, port: port}
 	p, err := pool.NewBlockingPool(STORAGE_MIN_CONN, STORAGE_MAX_CONN, STORAGE_MAX_IDLE, client.makeConn)
 	if err != nil {
 		return nil, err
@@ -125,17 +125,14 @@ func (this *storageClient) storageDownload(storeInfo *storageInfo, fileContent i
 func (this *storageClient) makeConn() (net.Conn, error) {
 	Cat := cat.Instance()
 	addr := fmt.Sprintf("%s:%d", this.host, this.port)
+	event := Cat.NewEvent("DialStorage", addr)
 	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
 	if err != nil {
-		event := Cat.NewEvent("DialStorage", "Fail")
-		event.AddData("addr", addr)
 		event.AddData("detail", err.Error())
 		event.SetStatus("ERROR")
 		event.Complete()
 		return nil, err
 	}
-	event := Cat.NewEvent("DialStorage", "Success")
-	event.AddData("addr", addr)
 	event.SetStatus("0")
 	event.Complete()
 	return conn, nil
