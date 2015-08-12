@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"github.com/ctripcorp/cat"
 )
 
 type FdfsClient interface {
@@ -15,6 +16,9 @@ type FdfsClient interface {
 	//from the pool map
 	DownloadToBuffer(fileId string) ([]byte, error)
 }
+
+//global cat instance
+var globalCat cat.Cat = cat.Instance()
 
 type fdfsClient struct {
 	//tracker client containing a connetction pool
@@ -27,7 +31,7 @@ type fdfsClient struct {
 	mutex sync.RWMutex
 }
 
-//fdfs client will create a connection pool to a tracker
+//NewFdfsClient create a connection pool to a tracker
 //the tracker is selected randomly from tracker group
 func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error) {
 	//select a random tracker host from host list
@@ -44,14 +48,14 @@ func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error
 }
 
 func (this *fdfsClient) DownloadToBuffer(fileId string) ([]byte, error) {
-	rsp, err := this.downloadToBufferByOffset(fileId, 0, 0)
+	buff, err := this.downloadToBufferByOffset(fileId, 0, 0)
 	if err != nil {
 		return nil, err
 	}
-	return rsp.content.([]byte), nil
+	return buff, nil
 }
 
-func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, downloadSize int64) (*downloadRsp, error) {
+func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, downloadSize int64) ([]byte, error) {
 	//split file id to two parts: group name and file name
 	tmp, err := splitRemoteFileId(fileId)
 	if err != nil || len(tmp) != 2 {
@@ -72,8 +76,7 @@ func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, do
 		return nil, err
 	}
 
-	var fileBuffer []byte
-	return storeClient.storageDownloadToBuffer(storeInfo, fileBuffer, offset, downloadSize, fileName)
+	return storeClient.storageDownload(storeInfo, offset, downloadSize, fileName)
 }
 
 func (this *fdfsClient) getStorage(ip string, port int) (*storageClient, error) {
