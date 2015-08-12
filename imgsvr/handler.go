@@ -60,7 +60,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		"serverip": GetIP(),
 		"proto":    request.Proto,
 		"referer":  request.Referer(),
-		"agent":    request.UserAgent(),
+		//"agent":    request.UserAgent(),
 	})
 
 	LogEvent(Cat, "URL", "URL.method", map[string]string{
