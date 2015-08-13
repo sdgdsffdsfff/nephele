@@ -2,10 +2,10 @@ package fdfs
 
 import (
 	"fmt"
+	"github.com/ctripcorp/cat"
 	"math/rand"
 	"strconv"
 	"sync"
-	"github.com/ctripcorp/cat"
 )
 
 type FdfsClient interface {
@@ -14,11 +14,11 @@ type FdfsClient interface {
 	//if the storage server doesn't exist, it will create a connection pool
 	//and add it to the storge server pool map, otherwise it will get directly
 	//from the pool map
-	DownloadToBuffer(fileId string) ([]byte, error)
+	DownloadToBuffer(fileId string, catInstance cat.Cat) ([]byte, error)
 }
 
-//global cat instance
-var globalCat cat.Cat = cat.Instance()
+//cat instance transferred by user
+var userCat cat.Cat
 
 type fdfsClient struct {
 	//tracker client containing a connetction pool
@@ -47,7 +47,12 @@ func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error
 	return &fdfsClient{tracker: tc, storages: make(map[string]*storageClient)}, nil
 }
 
-func (this *fdfsClient) DownloadToBuffer(fileId string) ([]byte, error) {
+func (this *fdfsClient) DownloadToBuffer(fileId string, catInstance cat.Cat) ([]byte, error) {
+	if catInstance == nil {
+		return nil, errors.New("cat instance transferred to fdfs is nil")
+	} else {
+		userCat = catInstance
+	}
 	buff, err := this.downloadToBufferByOffset(fileId, 0, 0)
 	if err != nil {
 		return nil, err
@@ -69,6 +74,9 @@ func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, do
 	if err != nil {
 		return nil, err
 	}
+	event := userCat.NewEvent("FdfsStorage", fmt.Sprintf("%s:%s", storeInfo.groupName, storeInfo.ipAddr))
+	event.SetStatus("0")
+	event.Complete()
 
 	//get a storage client from storage map, if not exist, create a new storage client
 	storeClient, err := this.getStorage(storeInfo.ipAddr, storeInfo.port)

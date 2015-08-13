@@ -94,15 +94,16 @@ func (this *trackerClient) trackerQueryStorage(groupName string, fileName string
 func (this *trackerClient) makeConn() (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", this.host, this.port)
 	event := globalCat.NewEvent("DialTracker", addr)
+	defer func() {
+		event.Complete()
+	}()
 	conn, err := net.DialTimeout("tcp", addr, TRACKER_NETWORK_TIMEOUT)
 	if err != nil {
 		errMsg := fmt.Sprintf("dial tracker %v fail, error info: %v", addr, err.Error())
 		event.AddData("detail", errMsg)
 		event.SetStatus("ERROR")
-		event.Complete()
 		return nil, errors.New(errMsg)
 	}
 	event.SetStatus("0")
-	event.Complete()
 	return conn, nil
 }

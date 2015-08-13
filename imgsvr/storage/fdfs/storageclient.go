@@ -91,16 +91,17 @@ func (this *storageClient) storageDownload(storeInfo *storageInfo, offset int64,
 //factory method used to dial
 func (this *storageClient) makeConn() (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", this.host, this.port)
-	event := globalCat.NewEvent("DialStorage", addr)
+	event := userCat.NewEvent("DialStorage", addr)
+	defer func() {
+		event.Complete()
+	}()
 	conn, err := net.DialTimeout("tcp", addr, STORAGE_NETWORK_TIMEOUT)
 	if err != nil {
 		errMsg := fmt.Sprintf("dial storage %v fail, error info: %v", addr, err.Error())
 		event.AddData("detail", errMsg)
 		event.SetStatus("ERROR")
-		event.Complete()
 		return nil, errors.New(errMsg)
 	}
 	event.SetStatus("0")
-	event.Complete()
 	return conn, nil
 }
