@@ -335,7 +335,7 @@ func (this *ProcChainBuilder) getLogoWaterMarkProcessor(channel string, params m
 		l = 9
 	}
 	var path = logodir + wn + ".png"
-	bts, err := GetImage(nfs, path)
+	bts, err := GetImage(nfs, path, this.Cat)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +372,7 @@ func (this *ProcChainBuilder) getNameWaterMarkProcessor(sourceType string, chann
 	widthVal, _ := params[":3"]
 	width, _ := strconv.ParseInt(widthVal, 10, 64)
 	var logoname = this.getnamelogo(width)
-	imagebts, err := GetImage(sourceType, path+logoname)
+	imagebts, err := GetImage(sourceType, path+logoname, this.Cat)
 	if err != nil {
 		return nil, nil
 	}

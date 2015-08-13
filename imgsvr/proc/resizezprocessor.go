@@ -29,9 +29,21 @@ func (this *ResizeZProcessor) Process(img *img4g.Image) error {
 		return err1
 	}
 
+	w, h := this.Width, this.Height
+	if w == 0 {
+		w = width * h / height
+		err = img.Resize(w, h)
+		return err
+	}
+	if h == 0 {
+		h = height * w / width
+		err = img.Resize(w, h)
+		return err
+	}
+
 	p1 := float64(this.Width) / float64(this.Height)
 	p2 := float64(width) / float64(height)
-	w, h := this.Width, this.Height
+
 	if p2 > p1 {
 		h = int64(math.Floor(float64(this.Width) / p2))
 		if int64(math.Abs(float64(h-this.Height))) < 3 {

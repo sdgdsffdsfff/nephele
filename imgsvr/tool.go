@@ -33,10 +33,11 @@ var (
 	nfs1Url     = util.RegexpExt{regexp.MustCompile("t1/([a-zA-Z]+)/(.*)")}
 	nfs2Url     = util.RegexpExt{regexp.MustCompile("([a-zA-Z]+)/(.*)")}
 
-	fd   = "fd"
-	nfs1 = "nfs1"
-	nfs2 = "nfs2"
-	nfs  = "nfs"
+	fd         = "fd"
+	nfs1       = "nfs1"
+	nfs2       = "nfs2"
+	nfs        = "nfs"
+	WorkerPort string
 )
 
 //var StartPort int
@@ -91,7 +92,7 @@ func JoinString(args ...string) string {
 	return buf.String()
 }
 
-func GetStorage(storageType string, path string) (storage.Storage, error) {
+func GetStorage(storageType string, path string, Cat cat.Cat) (storage.Storage, error) {
 	var srg storage.Storage
 	switch storageType {
 	case fd:
@@ -104,6 +105,7 @@ func GetStorage(storageType string, path string) (storage.Storage, error) {
 			Path:          path,
 			TrackerDomain: domain,
 			Port:          port,
+			Cat:           Cat,
 		}
 	case nfs:
 		srg = &storage.Nfs{path}
@@ -113,8 +115,8 @@ func GetStorage(storageType string, path string) (storage.Storage, error) {
 	}
 	return srg, nil
 }
-func GetImage(storageType string, path string) ([]byte, error) {
-	srg, err := GetStorage(storageType, path)
+func GetImage(storageType string, path string, Cat cat.Cat) ([]byte, error) {
+	srg, err := GetStorage(storageType, path, Cat)
 	if err != nil {
 		return nil, err
 	}
