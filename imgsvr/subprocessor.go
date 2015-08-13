@@ -24,6 +24,7 @@ func (this *SubProcessor) Run() {
 			LogErrorEvent(CatInstance, "workprocess.recovererror", fmt.Sprintf("%v", err))
 		}
 	}()
+	WorkerPort = this.Port
 	LogEvent(CatInstance, Reboot, JoinString(GetIP(), ":", this.Port), nil)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, os.Kill)

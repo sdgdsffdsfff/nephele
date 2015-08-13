@@ -66,6 +66,9 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	LogEvent(Cat, "URL", "URL.method", map[string]string{
 		"Http": request.Method + " " + uri,
 	})
+
+	LogEvent(Cat, "LoadBalance", JoinString(GetIP(), ":", WorkerPort), nil)
+
 	params, ok1 := legalUrl.FindStringSubmatchMap(uri)
 	if !ok1 {
 		err = errors.New("uri.parseerror")
@@ -73,7 +76,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		LogErrorEvent(Cat, "uri.parseerror", "")
 		return
 	}
-	store, storagetype, err1 := FindStorage(params)
+	store, storagetype, err1 := FindStorage(params, Cat)
 	if err1 != nil {
 		err = errors.New("storage.parseerror")
 		l4g.Error("%s; rcv(url:%s)", err1, uri)
@@ -191,7 +194,7 @@ func chainProcImg(catinstance cat.Cat, chain *proc.ProcessorChain, img *img4g.Im
 	return nil
 }
 
-func FindStorage(params map[string]string) (storage.Storage, string, error) {
+func FindStorage(params map[string]string, Cat cat.Cat) (storage.Storage, string, error) {
 	srcPath, ok := params[":1"]
 	if !ok {
 		return nil, "", errors.New("Url.UnExpected")
@@ -201,7 +204,7 @@ func FindStorage(params map[string]string) (storage.Storage, string, error) {
 		return nil, "", errors.New("Image.Ext.Invalid()")
 	}
 	sourceType, _, path := ParseUri(srcPath)
-	s, err := GetStorage(sourceType, path+"."+format)
+	s, err := GetStorage(sourceType, path+"."+format, Cat)
 	return s, sourceType, err
 }
 

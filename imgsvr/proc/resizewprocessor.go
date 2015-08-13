@@ -27,13 +27,26 @@ func (this *ResizeWProcessor) Process(img *img4g.Image) error {
 	if err != nil {
 		return err
 	}
-	if width <= this.Width && height <= this.Height {
+
+	if (width <= this.Width && height <= this.Height && this.Width != 0 && this.Height != 0) || (this.Width == 0 && height <= this.Height) || (this.Height == 0 && width <= this.Width) {
 		return nil
+	}
+
+	w, h := this.Width, this.Height
+	if w == 0 {
+		w = width * h / height
+		err = img.Resize(w, h)
+		return err
+	}
+	if h == 0 {
+		h = height * w / width
+		err = img.Resize(w, h)
+		return err
 	}
 
 	p1 := float64(this.Width) / float64(this.Height)
 	p2 := float64(width) / float64(height)
-	w, h := this.Width, this.Height
+
 	if p2 > p1 {
 		h = int64(math.Floor(float64(this.Width) / p2))
 		if int64(math.Abs(float64(h-this.Height))) < 3 {
