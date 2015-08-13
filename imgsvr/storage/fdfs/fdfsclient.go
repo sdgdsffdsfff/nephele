@@ -1,6 +1,7 @@
 package fdfs
 
 import (
+	"errors"
 	"fmt"
 	"github.com/ctripcorp/cat"
 	"math/rand"
@@ -18,7 +19,8 @@ type FdfsClient interface {
 }
 
 //cat instance transferred by user
-var userCat cat.Cat
+//var userCat cat.Cat
+var globalCat cat.Cat = cat.Instance()
 
 type fdfsClient struct {
 	//tracker client containing a connetction pool
@@ -50,17 +52,15 @@ func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error
 func (this *fdfsClient) DownloadToBuffer(fileId string, catInstance cat.Cat) ([]byte, error) {
 	if catInstance == nil {
 		return nil, errors.New("cat instance transferred to fdfs is nil")
-	} else {
-		userCat = catInstance
 	}
-	buff, err := this.downloadToBufferByOffset(fileId, 0, 0)
+	buff, err := this.downloadToBufferByOffset(fileId, 0, 0, catInstance)
 	if err != nil {
 		return nil, err
 	}
 	return buff, nil
 }
 
-func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, downloadSize int64) ([]byte, error) {
+func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, downloadSize int64, catInstance cat.Cat) ([]byte, error) {
 	//split file id to two parts: group name and file name
 	tmp, err := splitRemoteFileId(fileId)
 	if err != nil || len(tmp) != 2 {
@@ -74,7 +74,7 @@ func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, do
 	if err != nil {
 		return nil, err
 	}
-	event := userCat.NewEvent("FdfsStorage", fmt.Sprintf("%s:%s", storeInfo.groupName, storeInfo.ipAddr))
+	event := catInstance.NewEvent("FdfsStorage", fmt.Sprintf("%s:%s", storeInfo.groupName, storeInfo.ipAddr))
 	event.SetStatus("0")
 	event.Complete()
 
