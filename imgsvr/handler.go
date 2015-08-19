@@ -120,7 +120,11 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 				LogErrorEvent(Cat, err.Error(), "recv image length is 0")
 				l4g.Error("%s -- %s; rcv(url:%s)", "getimage", "recv image length is 0", uri)
 			}
-			getimagetran.SetStatus(err)
+			if isSuccess {
+				getimagetran.SetStatus("0")
+			} else {
+				getimagetran.SetStatus(err)
+			}
 			getimagetran.Complete()
 		}()
 		bts, err1 = store.GetImage()
