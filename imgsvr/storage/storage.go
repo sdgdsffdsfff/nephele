@@ -37,7 +37,6 @@ func (this *Fdfs) GetImage() ([]byte, error) {
 		}
 		<-lock
 	}
-
 	bts, err := client.DownloadToBuffer(this.Path, this.Cat)
 	if err != nil {
 		return nil, err

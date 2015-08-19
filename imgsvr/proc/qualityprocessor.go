@@ -14,10 +14,10 @@ type QualityProcessor struct {
 func (this *QualityProcessor) Process(img *img4g.Image) error {
 	l4g.Debug("process quality ")
 	var err error
-	//tran := this.Cat.NewTransaction(Image, "Quality")
+	tran := this.Cat.NewTransaction(Image, "Quality")
 	defer func() {
-		//	tran.SetStatus(err)
-		//	tran.Complete()
+		tran.SetStatus(err)
+		tran.Complete()
 	}()
 	err = img.SetCompressionQuality(this.Quality)
 	return err

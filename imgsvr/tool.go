@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"sync"
 )
 
 var (
@@ -41,14 +42,35 @@ var (
 )
 
 //var StartPort int
-type imgHandle struct {
+type nepheleTask struct {
 	inImg       *img4g.Image
 	chain       *proc.ProcessorChain
-	status      chan bool
+	//response chan
+	rspChan     chan bool
+	
 	CatInstance cat.Cat
+
+	//if true, the task will be canceled
+	canceled bool
+	
+	//use to read or set canceled
+	mutex sync.Mutex
 }
 
-var imgHandleChan = make(chan imgHandle, 1000)
+func (nt *nepheleTask) SetCanceled() {
+	nt.mutex.Lock()
+	defer nt.mutex.Unlock()
+	nt.canceled = true
+}
+
+func (nt *nepheleTask) GetCanceled() bool {
+	nt.mutex.Lock()
+	defer nt.mutex.Unlock()
+	return nt.canceled
+}
+
+//chan containing tasks waiting to be processed
+var taskChan = make(chan *nepheleTask, 1000)
 
 //sourceType, channel, path
 func ParseUri(path string) (string, string, string) {

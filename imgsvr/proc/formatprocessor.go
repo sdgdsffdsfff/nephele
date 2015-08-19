@@ -14,10 +14,10 @@ type FormatProcessor struct {
 func (this *FormatProcessor) Process(img *img4g.Image) error {
 	l4g.Debug("process format " + this.Format)
 	var err error
-	//tran := this.Cat.NewTransaction(Image, "Format")
+	tran := this.Cat.NewTransaction(Image, "Format")
 	defer func() {
-		//	tran.SetStatus(err)
-		//	tran.Complete()
+		tran.SetStatus(err)
+		tran.Complete()
 	}()
 	err = img.SetFormat(this.Format)
 	return err

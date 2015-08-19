@@ -13,10 +13,10 @@ type StripProcessor struct {
 func (this *StripProcessor) Process(img *img4g.Image) error {
 	l4g.Debug("process strip")
 	var err error
-	//tran := this.Cat.NewTransaction(Image, "Strip")
+	tran := this.Cat.NewTransaction(Image, "Strip")
 	defer func() {
-		//	tran.SetStatus(err)
-		//	tran.Complete()
+		tran.SetStatus(err)
+		tran.Complete()
 	}()
 	err = img.Strip()
 	return err

@@ -2,12 +2,12 @@ package fdfs
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
 	"strings"
 	"time"
+	"fmt"
 )
 
 type Errno struct {
@@ -24,8 +24,6 @@ func (e Errno) Error() string {
 	}
 	return errmsg
 }
-
-type FdfsConfigParser struct{}
 
 func fdfsCheckFile(filename string) error {
 	if _, err := os.Stat(filename); err != nil {
