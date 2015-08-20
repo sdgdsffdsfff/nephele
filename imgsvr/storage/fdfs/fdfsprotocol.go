@@ -157,6 +157,35 @@ type header struct {
 	status int8
 }
 
+type Error interface {
+	Error() string
+	Normal() bool 	//is normal error?
+	Type() string		//error type
+}
+
+type statusError struct {
+	remoteServer string
+	status       byte
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("recv header from server: %v fail, response status %v != 0", e.remoteServer, e.status)
+}
+
+func (e *statusError) Type() string {
+	if e.status == 2 {
+		return "FileNotExistError"
+	} else {
+		return "Other"
+	}
+}
+
+func (e *statusError) Normal() bool { return true }
+
+func newStatusError(remoteServer string, status byte) Error {
+	return &statusError{remoteServer, status}
+}
+
 //read fdfs header
 func recvHeader(conn net.Conn, timeout time.Duration) (*header, error) {
 	data, err := tcpRecv(conn, 10, timeout)
@@ -174,8 +203,7 @@ func recvHeader(conn net.Conn, timeout time.Duration) (*header, error) {
 	cmd, _ := buff.ReadByte()
 	status, _ := buff.ReadByte()
 	if status != 0 {
-		errMsg := fmt.Sprintf("recv header from server: %v fail, response status %v != 0", conn.RemoteAddr().String(), status)
-		return nil, errors.New(errMsg)
+		return nil, newStatusError(conn.RemoteAddr().String(), status)
 	}
 	h.cmd = int8(cmd)
 	h.status = int8(status)

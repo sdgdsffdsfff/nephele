@@ -74,7 +74,7 @@ func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, do
 	if err != nil {
 		return nil, err
 	}
-	event := catInstance.NewEvent("FdfsStorage", fmt.Sprintf("%s:%s", storeInfo.groupName, storeInfo.ipAddr))
+	event := catInstance.NewEvent("ImgFromStorage", fmt.Sprintf("%s:%s", storeInfo.groupName, storeInfo.ipAddr))
 	event.SetStatus("0")
 	event.Complete()
 
@@ -83,13 +83,11 @@ func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, do
 	if err != nil {
 		return nil, err
 	}
-
 	return storeClient.storageDownload(storeInfo, offset, downloadSize, fileName)
 }
 
 func (this *fdfsClient) getStorage(ip string, port int) (*storageClient, error) {
 	storageKey := fmt.Sprintf("%s-%d", ip, port)
-
 	//if the storage with the key exists, return the stroage
 	//else create a new stroage and return
 	if sc := this.queryStorage(storageKey); sc != nil {

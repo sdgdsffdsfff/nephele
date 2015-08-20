@@ -13,7 +13,7 @@ import (
 const (
 	TRACKER_MIN_CONN        int           = 5
 	TRACKER_MAX_CONN        int           = 5
-	TRACKER_MAX_IDLE        time.Duration = 10 * time.Hour
+	TRACKER_MAX_IDLE        time.Duration = 119 * time.Second
 	TRACKER_NETWORK_TIMEOUT time.Duration = 10 * time.Second
 )
 

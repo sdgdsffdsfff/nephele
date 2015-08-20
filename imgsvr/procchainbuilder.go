@@ -25,35 +25,44 @@ var (
 	CmdRotate    = "rotate"
 )
 
-func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorChain, error) {
+type buildError struct {
+	error
+	errType string
+}
+
+func (e *buildError) Type() string {
+	return e.errType
+}
+
+func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorChain, *buildError) {
 	procChain := &proc.ProcessorChain{Chain: make([]proc.ImageProcessor, 0, 5)}
 
 	sourceType, channel, path := ParseUri(params[":1"])
 	//_, channel, _ := ParseUri(params[":1"])
 	sequences, e := data.GetSequenceofoperation(channel)
 	if e != nil {
-		return nil, e
+		return nil, &buildError{e, "UrlSequenceCmdError"}
 	}
 	for _, t := range sequences {
 		switch t {
 		case CmdStrip:
 			stripProcessor, e := this.getStripProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlStripCmdError"}
 			}
 			procChain.Chain = append(procChain.Chain, stripProcessor)
 			l4g.Debug("add strip processor")
 		case CmdResize:
 			resizeProcessor, e := this.getResizeProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlResizeCmdError"}
 			}
 			procChain.Chain = append(procChain.Chain, resizeProcessor)
 			l4g.Debug("add resize processor")
 		case CmdQuality:
 			qualityProcessor, e := this.getQualityProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlQualityCmdError"}
 			}
 			if qualityProcessor != nil {
 				procChain.Chain = append(procChain.Chain, qualityProcessor)
@@ -62,7 +71,7 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 		case CmdRotate:
 			rotateProcessor, e := this.getRotateProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlRotateCmdError"}
 			}
 			if rotateProcessor != nil {
 				procChain.Chain = append(procChain.Chain, rotateProcessor)
@@ -71,7 +80,7 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 		case CmdWaterMark:
 			waterMarkProcessors, e := this.getWaterMarkProcessors(sourceType, channel, path, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlWaterMarkCmdError"}
 			}
 			if waterMarkProcessors != nil {
 				for _, p := range waterMarkProcessors {
@@ -83,7 +92,7 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 		case CmdFormat:
 			formatProcessor, e := this.getFormatProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlFormatCmdError"}
 			}
 			if formatProcessor != nil {
 				procChain.Chain = append(procChain.Chain, formatProcessor)
