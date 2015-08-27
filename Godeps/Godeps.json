@@ -1,0 +1,26 @@
+{
+	"ImportPath": "github.com/ctripcorp/nephele",
+	"GoVersion": "go1.4.2",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/Sirupsen/logrus",
+			"Comment": "v0.8.6-11-g44512f0",
+			"Rev": "44512f0d08f7f81a75f5b04a2cb6d81ed25431ca"
+		},
+		{
+			"ImportPath": "github.com/Unknwon/goconfig",
+			"Rev": "5cfc02f2789e6e98d8546e40b29d907aedc4c590"
+		},
+		{
+			"ImportPath": "github.com/ctripcorp/cat.go",
+			"Rev": "6459d9e7f98977761fcf4df7f3b6723af2b17786"
+		},
+		{
+			"ImportPath": "github.com/ctripcorp/ghost/pool",
+			"Rev": "d64f8d241612cdf0379d7d5d6194aed7bb917816"
+		}
+	]
+}
