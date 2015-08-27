@@ -2,7 +2,6 @@ package main
 
 import (
 	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
-	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr"
 	"github.com/ctripcorp/nephele/util"
 	_ "net/http/pprof"
@@ -143,24 +142,12 @@ func getArgs() (int, string, string) {
 }
 
 func init() {
-	//running environment
-	env := util.GetRunningEnv()
-
-	initCat(env)
+	//initial cat
+	util.InitCat()
 
 	initLog()
 }
 
-//initial cat based on env
-func initCat(env string) {
-	switch env {
-	case "uat":
-		cat.CAT_HOST = "UAT"
-	case "prod":
-		cat.CAT_HOST = "PROD"
-	}
-	cat.DOMAIN = "100001678"
-}
 
 //initial logrus
 func initLog() {
@@ -173,5 +160,5 @@ func initLog() {
 	log.SetOutput(logFile)
 
 	// Only log the warning severity or above.
-	log.SetLevel(log.WarnLevel)
+	log.SetLevel(log.InfoLevel)
 }

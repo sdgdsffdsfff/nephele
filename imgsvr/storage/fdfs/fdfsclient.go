@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
+	"github.com/ctripcorp/nephele/util"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -20,7 +21,12 @@ type FdfsClient interface {
 
 //cat instance transferred by user
 //var userCat cat.Cat
-var globalCat cat.Cat = cat.Instance()
+var globalCat cat.Cat
+
+func init() {
+	util.InitCat()
+	globalCat = cat.Instance()
+}
 
 type fdfsClient struct {
 	//tracker client containing a connetction pool

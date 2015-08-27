@@ -30,7 +30,7 @@ var (
 	Globalhotel = "globalhotel"
 	TG          = "tg"
 	Reboot      = "Reboot"
-	CatInstance = cat.Instance()
+	CatInstance cat.Cat
 	fdfsUrl     = util.RegexpExt{regexp.MustCompile("fd/([a-zA-Z]+)/(.*)")}
 	nfs1Url     = util.RegexpExt{regexp.MustCompile("t1/([a-zA-Z]+)/(.*)")}
 	nfs2Url     = util.RegexpExt{regexp.MustCompile("([a-zA-Z]+)/(.*)")}
@@ -41,6 +41,11 @@ var (
 	nfs        = "nfs"
 	WorkerPort string
 )
+
+func init() {
+	util.InitCat()
+	CatInstance = cat.Instance()
+}
 
 //var StartPort int
 type nepheleTask struct {
