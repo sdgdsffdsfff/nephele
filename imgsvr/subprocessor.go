@@ -2,7 +2,7 @@ package imgsvr
 
 import (
 	"fmt"
-	l4g "github.com/alecthomas/log4go"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"net/http"
 	"net/url"
@@ -19,9 +19,13 @@ type SubProcessor struct {
 
 func (this *SubProcessor) Run() {
 	defer func() {
-		if err := recover(); err != nil {
-			l4g.Error("%s -- %s", JoinString("workerprocess->run(port:", this.Port, ",hostport:", this.HostPort, ")"), err)
-			LogErrorEvent(CatInstance, "workprocess.recovererror", fmt.Sprintf("%v", err))
+		if p := recover(); p != nil {
+			log.WithFields(log.Fields{
+				"hostPort":   this.HostPort,
+				"workerPort": this.Port,
+				"type":       "Worker.RunPanic",
+			}).Error(fmt.Sprintf("%v", p))
+			LogErrorEvent(CatInstance, "Worker.RunPanic", fmt.Sprintf("%v", p))
 		}
 	}()
 	WorkerPort = this.Port
@@ -32,7 +36,7 @@ func (this *SubProcessor) Run() {
 	go CycleHandleImage()
 	go this.listenHttp()
 	if this.HostPort != "" {
-		go this.sendStats()
+		go this.sendStatus()
 	}
 	<-c
 	os.Exit(0)
@@ -42,7 +46,9 @@ func (this *SubProcessor) listenHttp() {
 	http.Handle("/images/", handler)
 	http.HandleFunc("/heartbeat/", this.handleHeartbeart)
 	http.HandleFunc("/reload/", this.reload)
-	l4g.Debug("starthttp port:" + this.Port)
+	log.WithFields(log.Fields{
+		"port": this.Port,
+	}).Debug("http start port")
 	err := http.ListenAndServe(":"+this.Port, nil)
 	if err != nil {
 		panic(err)
@@ -68,20 +74,26 @@ func (this *SubProcessor) handleHeartbeart(w http.ResponseWriter, request *http.
 	w.Header().Set("Content-Length", strconv.Itoa(len(a)))
 	w.Write(a)
 }
-func (this *SubProcessor) sendStats() {
+func (this *SubProcessor) sendStatus() {
 	defer func() {
-		if err := recover(); err != nil {
-			l4g.Error("%s -- %s", JoinString("workprocess->sendStats(port:", this.Port, ")"), err)
-			LogErrorEvent(CatInstance, "workprocess.sendstats", fmt.Sprintf("%v", err))
-			this.sendStats()
+		if p := recover(); p != nil {
+			log.WithFields(log.Fields{
+				"port": this.Port,
+				"type": "Worker.SendStatusPanic",
+			}).Error(fmt.Sprintf("%v", p))
+			LogErrorEvent(CatInstance, "Worker.SendStatusPanic", fmt.Sprintf("%v", p))
+			this.sendStatus()
 
 		}
 	}()
 	for {
 		time.Sleep(10 * time.Second)
 		uri := JoinString("http://localhost:", this.HostPort, "/heartbeat/")
-		l4g.Debug(JoinString("port:", this.Port, " | ", uri))
-		status := GetStats()
+		log.WithFields(log.Fields{
+			"port": this.Port,
+			"uri":  uri,
+		}).Debug("begin send status")
+		status := GetStatus()
 		data := url.Values{}
 		data.Add("port", this.Port)
 		for k, v := range status {
@@ -90,8 +102,11 @@ func (this *SubProcessor) sendStats() {
 		_, err := PostHttp(uri, data)
 		if err != nil {
 			// handle error
-			l4g.Error("%s -- %s", JoinString("workprocess->sendStats(port:", this.Port, ")"), err)
-			LogErrorEvent(CatInstance, "workprocess.sendstats", err.Error())
+			log.WithFields(log.Fields{
+				"port": this.Port,
+				"type": "Worker.SendStatusError",
+			}).Error(err.Error())
+			LogErrorEvent(CatInstance, "Worker.SendStatusError", err.Error())
 		}
 	}
 }

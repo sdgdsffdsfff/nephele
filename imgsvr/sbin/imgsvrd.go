@@ -1,8 +1,10 @@
 package main
 
 import (
-	l4g "github.com/alecthomas/log4go"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr"
+	"github.com/ctripcorp/nephele/util"
 	_ "net/http/pprof"
 	"os"
 	"runtime"
@@ -11,9 +13,8 @@ import (
 
 func main() {
 	runtime.GOMAXPROCS(1)
-	l4g.LoadConfiguration("../conf/imgsvrd_log.xml")
 	if len(os.Args) < 2 {
-		l4g.Info("usage:params isn't invalid")
+		log.Info("usage:params isn't invalid")
 		os.Exit(1)
 	}
 	cmd := os.Args[1]
@@ -36,7 +37,7 @@ func main() {
 
 func modifyNginx() {
 	if len(os.Args) < 3 {
-		l4g.Info("usage:params isn't invalid")
+		log.Info("usage:params isn't invalid")
 		os.Exit(1)
 	}
 	nginxPath := os.Args[2]
@@ -55,13 +56,13 @@ func modifyNginx() {
 
 func reload() {
 	if len(os.Args) < 3 {
-		l4g.Info("usage:params isn't invalid")
+		log.Info("usage:params isn't invalid")
 		os.Exit(1)
 	}
 	portstr := os.Args[2]
 	port, err := strconv.Atoi(portstr)
 	if err != nil {
-		l4g.Error(err)
+		log.Error(err.Error())
 		os.Exit(1)
 	}
 	hostprocess := &imgsvr.HostProcessor{
@@ -75,13 +76,13 @@ func reload() {
 
 func h() {
 	if len(os.Args) < 3 {
-		l4g.Info("usage:params isn't invalid")
+		log.Info("usage:params isn't invalid")
 		os.Exit(1)
 	}
 	portstr := os.Args[2]
 	port, err := strconv.Atoi(portstr)
 	if err != nil {
-		l4g.Error(err)
+		log.Error(err)
 		os.Exit(1)
 	}
 	threadcount, nginxpath, nginxport := getArgs()
@@ -95,7 +96,7 @@ func h() {
 }
 func s() {
 	if len(os.Args) < 3 {
-		l4g.Info("usage:params isn't invalid")
+		log.Info("usage:params isn't invalid")
 		os.Exit(1)
 	}
 	portstr := os.Args[2]
@@ -139,4 +140,38 @@ func getArgs() (int, string, string) {
 		}
 	}
 	return threadCount, path, nginxPort
+}
+
+func init() {
+	//running environment
+	env := util.GetRunningEnv()
+
+	initCat(env)
+
+	initLog()
+}
+
+//initial cat based on env
+func initCat(env string) {
+	switch env {
+	case "uat":
+		cat.CAT_HOST = "UAT"
+	case "prod":
+		cat.CAT_HOST = "PROD"
+	}
+	cat.DOMAIN = "100001678"
+}
+
+//initial logrus
+func initLog() {
+	// Log as JSON instead of the default ASCII formatter.
+	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+
+	// Output to stderr instead of stdout, could also be a file.
+	logFile, _ := os.OpenFile("nephele.log", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+	//log.SetOutput(os.Stderr)
+	log.SetOutput(logFile)
+
+	// Only log the warning severity or above.
+	log.SetLevel(log.WarnLevel)
 }

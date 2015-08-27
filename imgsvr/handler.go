@@ -3,8 +3,8 @@ package imgsvr
 import (
 	"errors"
 	"fmt"
-	l4g "github.com/alecthomas/log4go"
-	"github.com/ctripcorp/cat"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
 	"github.com/ctripcorp/nephele/imgsvr/storage"
@@ -38,7 +38,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	defer func() {
 		p := recover()
 		if p != nil {
-			l4g.Error("%s; rcv(url:%s)", p, uri)
+			logErrWithUri(uri, fmt.Sprintf("%v", p), "errorLevel")
 			Cat.LogPanic(p)
 			tran.SetStatus(p)
 		}
@@ -55,7 +55,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 	}()
 
-	LogEvent(Cat, "URL", "URL.client", map[string]string{
+	LogEvent(Cat, "URL", "URL.Client", map[string]string{
 		"clientip": GetClientIP(request),
 		"serverip": GetIP(),
 		"proto":    request.Proto,
@@ -63,7 +63,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		//"agent":    request.UserAgent(),
 	})
 
-	LogEvent(Cat, "URL", "URL.method", map[string]string{
+	LogEvent(Cat, "URL", "URL.Method", map[string]string{
 		"Http": request.Method + " " + uri,
 	})
 
@@ -71,24 +71,24 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	params, ok1 := legalUrl.FindStringSubmatchMap(uri)
 	if !ok1 {
-		err = errors.New("uri.parseerror")
-		l4g.Error("%s; rcv(url:%s)", err, uri)
-		LogErrorEvent(Cat, "uri.parseerror", "")
+		err = errors.New("URI.ParseError")
+		logErrWithUri(uri, err.Error(), "warnLevel")
+		LogErrorEvent(Cat, "URI.ParseError", "")
 		return
 	}
 	//parse storage from url parameters
 	store, storagetype, err1 := FindStorage(params, Cat)
 	if err1 != nil {
-		err = errors.New("storage.parseerror")
-		l4g.Error("%s; rcv(url:%s)", err1, uri)
-		LogErrorEvent(Cat, "storage.parseerror", err1.Error())
+		err = errors.New("Storage.ParseError")
+		logErrWithUri(uri, err1.Error(), "warnLevel")
+		LogErrorEvent(Cat, "Storage.ParseError", err1.Error())
 		return
 	}
 	//parse handlers chain from url parameters
 	chain, buildErr := handler.ChainBuilder.Build(params)
 	if buildErr != nil {
 		err = errors.New(buildErr.Type())
-		l4g.Error("%s; rcv(url:%s)", buildErr.Error(), uri)
+		logErrWithUri(uri, buildErr.Error(), "warnLevel")
 		LogErrorEvent(Cat, buildErr.Type(), buildErr.Error())
 		return
 	}
@@ -97,16 +97,16 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	func() {
 		type storageError interface {
 			Error() string
-			Normal() bool 	//is normal error?
-			Type() string	//error type
+			Normal() bool //is normal error?
+			Type() string //error type
 		}
 
 		var err1 error
 		getimagetran := Cat.NewTransaction("Storage", storagetype)
 		defer func() {
 			if err1 != nil {
-				l4g.Error("%s -- %s; rcv(url:%s)", "getimage", err1.Error(), uri)
-			        e, ok := err1.(storageError)
+				logErrWithUri(uri, err1.Error(), "errorLevel")
+				e, ok := err1.(storageError)
 				if ok && e.Normal() {
 					err = errors.New(fmt.Sprintf("%v.%v", storagetype, e.Type()))
 					LogErrorEvent(Cat, fmt.Sprintf("%v.%v", storagetype, e.Type()), e.Error())
@@ -118,7 +118,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			} else if len(bts) == 0 {
 				err = errors.New(storagetype + ".ImgLenZero")
 				LogErrorEvent(Cat, err.Error(), "recv image length is 0")
-				l4g.Error("%s -- %s; rcv(url:%s)", "getimage", "recv image length is 0", uri)
+				logErrWithUri(uri, "recv image length is 0", "warnLevel")
 			}
 			if isSuccess {
 				getimagetran.SetStatus("0")
@@ -137,48 +137,56 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	tran.AddData("size", sizestr)
 	Cat.LogEvent("Size", GetImageSizeDistribution(size))
 
-	l4g.Debug("get image length(%d) rcv(url:%s)", size, request.URL.String())
+	log.WithFields(log.Fields{
+		"size": size,
+		"uri":  uri,
+	}).Debug("recv image length")
 	format, _ := params["ext"]
-	img := &img4g.Image{Blob: bts, Format: format}
+	img := &img4g.Image{Blob: bts, Format: format, Cat: Cat}
 
 	rspChan := make(chan bool, 1)
-	task := &nepheleTask{inImg:img, chain:chain, rspChan:rspChan, CatInstance:Cat, canceled:false}
+	task := &nepheleTask{inImg: img, chain: chain, rspChan: rspChan, CatInstance: Cat, canceled: false}
 	taskChan <- task
 
 	select {
-	case ok := <- rspChan:
+	case ok := <-rspChan:
 		if !ok {
-			err = errors.New("processerror")
+			err = errors.New("ProcessError")
 			isSuccess = false
-			l4g.Error("%s; rcv(url:%s)", err, uri)
+			logErrWithUri(uri, err.Error(), "errorLevel")
 			return
 		}
 	case <-time.After(time.Second * 5):
 		task.SetCanceled()
-		err = errors.New("processtimeout")
-		l4g.Error("%s; rcv(url:%s)", err, uri)
+		err = errors.New("ProcessTimeout")
+		logErrWithUri(uri, err.Error(), "errorLevel")
 		isSuccess = false
-		LogErrorEvent(Cat, "processtimeout", "")
+		LogErrorEvent(Cat, "ProcessTimeout", "")
 		return
 	}
-	
+
 	writer.Header().Set("Content-Type", "image/"+format)
 	writer.Header().Set("Content-Length", strconv.Itoa(len(img.Blob)))
 	writer.Header().Set("Last-Modified", "2015/1/1 01:01:01")
-	l4g.Debug("final size->>>" + strconv.Itoa(len(img.Blob)))
+	log.WithFields(log.Fields{
+		"size": size,
+		"uri":  uri,
+	}).Debug("final image size")
 	if _, err1 = writer.Write(img.Blob); err1 != nil {
-		l4g.Error(err1)
-		err = errors.New("response.writeerror")
-		LogErrorEvent(Cat, "response.writeerror", err1.Error())
+		logErrWithUri(uri, err1.Error(), "errorLevel")
+		err = errors.New("Response.WriteError")
+		LogErrorEvent(Cat, "Response.Writeerror", err1.Error())
 		isSuccess = false
 	}
 }
 
 func CycleHandleImage() {
 	defer func() {
-		if err := recover(); err != nil {
-			l4g.Error("%s -- %s", "handleimage.recovererror", err)
-			LogErrorEvent(CatInstance, "handleimage.recovererror", fmt.Sprintf("%v", err))
+		if r := recover(); r != nil {
+			log.WithFields(log.Fields{
+				"type": "HandleImagePanic",
+			}).Error(fmt.Sprintf("%v", r))
+			LogErrorEvent(CatInstance, "HandleImagePanic", fmt.Sprintf("%v", r))
 			go CycleHandleImage()
 		}
 	}()
@@ -186,15 +194,17 @@ func CycleHandleImage() {
 	for {
 		status := true
 		//get a task from task chan
-		task := <- taskChan
+		task := <-taskChan
 		if task.GetCanceled() {
 			continue
-		} 
+		}
 		chain := task.chain
 		image := task.inImg
 		if err := chainProcImg(task.CatInstance, chain, image); err != nil {
-			l4g.Error("%s -- %s", "processerror", err)
-			LogErrorEvent(task.CatInstance, "processerror", err.Error())
+			log.WithFields(log.Fields{
+				"type": "ProcessError",
+			}).Error(err.Error())
+			LogErrorEvent(task.CatInstance, "ProcessError", err.Error())
 			status = false
 		}
 		task.rspChan <- status
@@ -204,39 +214,21 @@ func CycleHandleImage() {
 func chainProcImg(catinstance cat.Cat, chain *proc.ProcessorChain, img *img4g.Image) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			l4g.Error("%s -- %s", "processimage.recovererror", err)
-			LogErrorEvent(catinstance, "processimage.recovererror", fmt.Sprintf("%v", r))
+			log.WithFields(log.Fields{
+				"type": "ProcessImage.Panic",
+			}).Error(fmt.Sprintf("%v", r))
+			LogErrorEvent(catinstance, "ProcessImage.Panic", fmt.Sprintf("%v", r))
 		}
 	}()
-	defer func() {
-		tran := catinstance.NewTransaction("Command", "DestoryImgWand")
-		defer func() {
-			tran.SetStatus("0")
-			tran.Complete()
-		}()
-		img.DestoryWand()
-	}()
-	func(){
-		tran := catinstance.NewTransaction("Command", "CreateImgWand")
-		defer func() {
-			tran.SetStatus(err)
-			tran.Complete()
-		}()
-		err = img.CreateWand()
-	}()
-	if err != nil { return }
+	defer img.DestoryWand()
+	if err = img.CreateWand(); err != nil {
+		return
+	}
 	if err = chain.Process(img); err != nil {
 		return
 	}
-	func() {
-		tran := catinstance.NewTransaction("Command", "WriteImgToBlob")
-		defer func() {
-			tran.SetStatus(err)
-			tran.Complete()
-		}()
-		err = img.WriteImageBlob()
-	}()
-	return 
+	err = img.WriteImageBlob()
+	return
 }
 
 func FindStorage(params map[string]string, Cat cat.Cat) (storage.Storage, string, error) {

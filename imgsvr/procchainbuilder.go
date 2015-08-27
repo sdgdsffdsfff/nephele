@@ -2,12 +2,11 @@ package imgsvr
 
 import (
 	"errors"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
-	//l4g "github.com/ctripcorp/nephele/util/log"
-	l4g "github.com/alecthomas/log4go"
-	"github.com/ctripcorp/cat"
 	"strconv"
 	"strings"
 )
@@ -51,14 +50,14 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 				return nil, &buildError{e, "UrlStripCmdError"}
 			}
 			procChain.Chain = append(procChain.Chain, stripProcessor)
-			l4g.Debug("add strip processor")
+			log.Debug("add strip processor")
 		case CmdResize:
 			resizeProcessor, e := this.getResizeProcessor(channel, params)
 			if e != nil {
 				return nil, &buildError{e, "UrlResizeCmdError"}
 			}
 			procChain.Chain = append(procChain.Chain, resizeProcessor)
-			l4g.Debug("add resize processor")
+			log.Debug("add resize processor")
 		case CmdQuality:
 			qualityProcessor, e := this.getQualityProcessor(channel, params)
 			if e != nil {
@@ -66,7 +65,7 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 			}
 			if qualityProcessor != nil {
 				procChain.Chain = append(procChain.Chain, qualityProcessor)
-				l4g.Debug("add quality processor")
+				log.Debug("add quality processor")
 			}
 		case CmdRotate:
 			rotateProcessor, e := this.getRotateProcessor(channel, params)
@@ -75,7 +74,7 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 			}
 			if rotateProcessor != nil {
 				procChain.Chain = append(procChain.Chain, rotateProcessor)
-				l4g.Debug("add rotate processor")
+				log.Debug("add rotate processor")
 			}
 		case CmdWaterMark:
 			waterMarkProcessors, e := this.getWaterMarkProcessors(sourceType, channel, path, params)
@@ -96,7 +95,7 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 			}
 			if formatProcessor != nil {
 				procChain.Chain = append(procChain.Chain, formatProcessor)
-				l4g.Debug("add format processor")
+				log.Debug("add format processor")
 			}
 		}
 	}
@@ -277,16 +276,15 @@ func (this *ProcChainBuilder) getWaterMarkProcessors(sourceType string, channel 
 	}
 	if logoprocessor != nil {
 		processors = append(processors, logoprocessor)
-		l4g.Debug("add logo watermark processor")
+		log.Debug("add logo watermark processor")
 	}
-
 	nameprocessor, err := this.getNameWaterMarkProcessor(sourceType, channel, path, params)
 	if err != nil {
 		return nil, err
 	}
 	if nameprocessor != nil {
 		processors = append(processors, nameprocessor)
-		l4g.Debug("add name watermark processor")
+		log.Debug("add name watermark processor")
 	}
 
 	return processors, nil
@@ -344,11 +342,11 @@ func (this *ProcChainBuilder) getLogoWaterMarkProcessor(channel string, params m
 		l = 9
 	}
 	var path = logodir + wn + ".png"
-	bts, err := GetImage(nfs, path, this.Cat)
+	bts, err := GetImage("NFS", path, this.Cat)
 	if err != nil {
 		return nil, err
 	}
-	logo := &img4g.Image{Format: "png", Blob: bts}
+	logo := &img4g.Image{Format: "png", Blob: bts, Cat: this.Cat}
 	return &proc.WaterMarkProcessor{Logo: logo, Location: l, Dissolve: dissolve, Cat: this.Cat, WaterMarkType: "WaterMark"}, nil
 }
 
@@ -385,7 +383,7 @@ func (this *ProcChainBuilder) getNameWaterMarkProcessor(sourceType string, chann
 	if err != nil {
 		return nil, nil
 	}
-	logo := &img4g.Image{Format: "png", Blob: imagebts}
+	logo := &img4g.Image{Format: "png", Blob: imagebts, Cat: this.Cat}
 	defer func() {
 		logo.DestoryWand()
 	}()

@@ -159,8 +159,8 @@ type header struct {
 
 type Error interface {
 	Error() string
-	Normal() bool 	//is normal error?
-	Type() string		//error type
+	Normal() bool //is normal error?
+	Type() string //error type
 }
 
 type statusError struct {
@@ -173,9 +173,12 @@ func (e *statusError) Error() string {
 }
 
 func (e *statusError) Type() string {
-	if e.status == 2 {
-		return "FileNotExistError"
-	} else {
+	switch e.status {
+	case 2:
+		return "FileNotExist"
+	case 22:
+		return "InvalidArgument"
+	default:
 		return "Other"
 	}
 }

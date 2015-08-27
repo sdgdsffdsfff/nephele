@@ -2,8 +2,8 @@ package proc
 
 import (
 	"errors"
-	l4g "github.com/alecthomas/log4go"
-	"github.com/ctripcorp/cat"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 )
 
@@ -16,9 +16,9 @@ type WaterMarkProcessor struct {
 }
 
 func (this *WaterMarkProcessor) Process(img *img4g.Image) error {
-	l4g.Debug("process watermark")
+	log.Debug("process watermark")
 	var err error = nil
-	tran := this.Cat.NewTransaction(Image, this.WaterMarkType)
+	tran := this.Cat.NewTransaction("Command", this.WaterMarkType)
 
 	defer func() {
 		this.Logo.DestoryWand()

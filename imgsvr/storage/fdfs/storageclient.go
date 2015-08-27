@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/ctripcorp/ghost/pool"
+	"github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/ghost/pool"
 	"net"
 	"time"
 )

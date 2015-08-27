@@ -1,8 +1,8 @@
 package proc
 
 import (
-	l4g "github.com/alecthomas/log4go"
-	"github.com/ctripcorp/cat"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 	"math"
 )
@@ -14,9 +14,9 @@ type ResizeCProcessor struct {
 }
 
 func (this *ResizeCProcessor) Process(img *img4g.Image) error {
-	l4g.Debug("process resize c")
+	log.Debug("process resize c")
 	var err error
-	tran := this.Cat.NewTransaction(Image, "ResizeC")
+	tran := this.Cat.NewTransaction("Command", "ResizeC")
 	defer func() {
 		tran.SetStatus(err)
 		tran.Complete()

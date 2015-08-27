@@ -3,7 +3,8 @@ package imgsvr
 import (
 	"bytes"
 	"errors"
-	"github.com/ctripcorp/cat"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
@@ -19,8 +20,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
+	"time"
 )
 
 var (
@@ -43,16 +44,16 @@ var (
 
 //var StartPort int
 type nepheleTask struct {
-	inImg       *img4g.Image
-	chain       *proc.ProcessorChain
+	inImg *img4g.Image
+	chain *proc.ProcessorChain
 	//response chan
-	rspChan     chan bool
-	
+	rspChan chan bool
+
 	CatInstance cat.Cat
 
 	//if true, the task will be canceled
 	canceled bool
-	
+
 	//use to read or set canceled
 	mutex sync.Mutex
 }
@@ -92,13 +93,13 @@ func ParseUri(path string) (string, string, string) {
 	p := params[":2"]
 	switch sourceType {
 	case fd:
-		return sourceType, strings.ToLower(channel), p
+		return "FastDFS", strings.ToLower(channel), p
 	case nfs1:
-		return nfs, strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
+		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
 	case nfs2:
-		return nfs, strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
+		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
 	}
-	return sourceType, "", ""
+	return "FastDFS", "", ""
 }
 
 func getTargetDir(channel, storagetype string) string {
@@ -117,7 +118,7 @@ func JoinString(args ...string) string {
 func GetStorage(storageType string, path string, Cat cat.Cat) (storage.Storage, error) {
 	var srg storage.Storage
 	switch storageType {
-	case fd:
+	case "FastDFS":
 		domain, err := data.GetFdfsDomain()
 		if err != nil {
 			return nil, err
@@ -129,7 +130,7 @@ func GetStorage(storageType string, path string, Cat cat.Cat) (storage.Storage, 
 			Port:          port,
 			Cat:           Cat,
 		}
-	case nfs:
+	case "NFS":
 		srg = &storage.Nfs{path}
 	}
 	if srg == nil {
@@ -280,7 +281,7 @@ func GetImageSizeDistribution(size int) string {
 // 	PauseNs      [256]uint64 // circular buffer of recent GC pause times, most recent at [(NumGC+255)%256]
 // 	NumGC        uint32
 
-func GetStats() map[string]string {
+func GetStatus() map[string]string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	var second uint64 = 1000000000
@@ -320,4 +321,18 @@ func LogEvent(cat cat.Cat, title string, name string, data map[string]string) {
 	}
 	event.SetStatus("0")
 	event.Complete()
+}
+
+//log error with logging fields uri
+func logErrWithUri(uri string, errMsg string, errLevel string) {
+	switch errLevel {
+	case "errorLevel":
+		log.WithFields(log.Fields{
+			"uri": uri,
+		}).Error(errMsg)
+	default:
+		log.WithFields(log.Fields{
+			"uri": uri,
+		}).Warn(errMsg)
+	}
 }

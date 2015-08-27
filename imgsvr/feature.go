@@ -2,7 +2,7 @@ package imgsvr
 
 import (
 	"errors"
-	"github.com/ctripcorp/cat"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
 	"strconv"
