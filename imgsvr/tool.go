@@ -102,7 +102,7 @@ func ParseUri(path string) (string, string, string) {
 	case nfs1:
 		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
 	case nfs2:
-		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
+		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs2) + channel + "/" + p
 	}
 	return "FastDFS", "", ""
 }
