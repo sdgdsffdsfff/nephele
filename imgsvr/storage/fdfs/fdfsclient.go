@@ -1,10 +1,13 @@
 package fdfs
 
 import (
+	"errors"
 	"fmt"
-	"sync"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
+	"github.com/ctripcorp/nephele/util"
 	"math/rand"
 	"strconv"
+	"sync"
 )
 
 type FdfsClient interface {
@@ -13,7 +16,16 @@ type FdfsClient interface {
 	//if the storage server doesn't exist, it will create a connection pool
 	//and add it to the storge server pool map, otherwise it will get directly
 	//from the pool map
-	DownloadToBuffer(fileId string) ([]byte, error)
+	DownloadToBuffer(fileId string, catInstance cat.Cat) ([]byte, error)
+}
+
+//cat instance transferred by user
+//var userCat cat.Cat
+var globalCat cat.Cat
+
+func init() {
+	util.InitCat()
+	globalCat = cat.Instance()
 }
 
 type fdfsClient struct {
@@ -21,18 +33,18 @@ type fdfsClient struct {
 	tracker *trackerClient
 
 	//storage client map
-	storages map[string]*storageClient 
+	storages map[string]*storageClient
 
 	//use to read or write a storage client from map
 	mutex sync.RWMutex
 }
 
-//fdfs client will create a connection pool to a tracker
+//NewFdfsClient create a connection pool to a tracker
 //the tracker is selected randomly from tracker group
 func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error) {
 	//select a random tracker host from host list
 	host := trackerHosts[rand.Intn(len(trackerHosts))]
-	port,err := strconv.Atoi(trackerPort)
+	port, err := strconv.Atoi(trackerPort)
 	if err != nil {
 		return nil, err
 	}
@@ -40,18 +52,21 @@ func NewFdfsClient(trackerHosts []string, trackerPort string) (FdfsClient, error
 	if err != nil {
 		return nil, err
 	}
-	return &fdfsClient{tracker:tc, storages:make(map[string]*storageClient)}, nil
+	return &fdfsClient{tracker: tc, storages: make(map[string]*storageClient)}, nil
 }
 
-func (this *fdfsClient) DownloadToBuffer(fileId string) ([]byte, error) {
-	rsp, err := this.downloadToBufferByOffset(fileId, 0, 0)
+func (this *fdfsClient) DownloadToBuffer(fileId string, catInstance cat.Cat) ([]byte, error) {
+	if catInstance == nil {
+		return nil, errors.New("cat instance transferred to fdfs is nil")
+	}
+	buff, err := this.downloadToBufferByOffset(fileId, 0, 0, catInstance)
 	if err != nil {
 		return nil, err
 	}
-	return rsp.content.([]byte), nil
+	return buff, nil
 }
 
-func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, downloadSize int64) (*downloadRsp, error) {
+func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, downloadSize int64, catInstance cat.Cat) ([]byte, error) {
 	//split file id to two parts: group name and file name
 	tmp, err := splitRemoteFileId(fileId)
 	if err != nil || len(tmp) != 2 {
@@ -65,31 +80,38 @@ func (this *fdfsClient) downloadToBufferByOffset(fileId string, offset int64, do
 	if err != nil {
 		return nil, err
 	}
+	event := catInstance.NewEvent("ImgFromStorage", fmt.Sprintf("%s:%s", storeInfo.groupName, storeInfo.ipAddr))
+	event.SetStatus("0")
+	event.Complete()
 
 	//get a storage client from storage map, if not exist, create a new storage client
 	storeClient, err := this.getStorage(storeInfo.ipAddr, storeInfo.port)
 	if err != nil {
 		return nil, err
 	}
-
-	var fileBuffer []byte
-	return storeClient.storageDownloadToBuffer(storeInfo, fileBuffer, offset, downloadSize, fileName)
+	return storeClient.storageDownload(storeInfo, offset, downloadSize, fileName)
 }
 
 func (this *fdfsClient) getStorage(ip string, port int) (*storageClient, error) {
 	storageKey := fmt.Sprintf("%s-%d", ip, port)
-
 	//if the storage with the key exists, return the stroage
-	//else create a new stroage and return  
+	//else create a new stroage and return
 	if sc := this.queryStorage(storageKey); sc != nil {
 		return sc, nil
 	} else {
-		sc, err := newStorageClient(ip, port)
-		if err != nil {
-			return nil, err
+		this.mutex.Lock()
+		defer this.mutex.Unlock()
+		//reconfirm wheather the storage exists
+		if sc, ok := this.storages[storageKey]; ok {
+			return sc, nil
+		} else {
+			sc, err := newStorageClient(ip, port)
+			if err != nil {
+				return nil, err
+			}
+			this.storages[storageKey] = sc
+			return sc, nil
 		}
-		this.insertStorages(storageKey, sc)
-		return sc, nil
 	}
 }
 
@@ -104,11 +126,3 @@ func (this *fdfsClient) queryStorage(key string) *storageClient {
 		return nil
 	}
 }
-
-//insert the storage client into storage map with the specific key
-func (this *fdfsClient) insertStorages(key string, sc *storageClient) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	this.storages[key] = sc
-}
-

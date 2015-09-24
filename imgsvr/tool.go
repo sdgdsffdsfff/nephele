@@ -3,7 +3,8 @@ package imgsvr
 import (
 	"bytes"
 	"errors"
-	"github.com/ctripcorp/cat"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
@@ -19,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -27,26 +29,54 @@ var (
 	Hotel       = "hotel"
 	Globalhotel = "globalhotel"
 	TG          = "tg"
-	CatInstance = cat.Instance()
+	Reboot      = "Reboot"
+	CatInstance cat.Cat
 	fdfsUrl     = util.RegexpExt{regexp.MustCompile("fd/([a-zA-Z]+)/(.*)")}
 	nfs1Url     = util.RegexpExt{regexp.MustCompile("t1/([a-zA-Z]+)/(.*)")}
 	nfs2Url     = util.RegexpExt{regexp.MustCompile("([a-zA-Z]+)/(.*)")}
 
-	fd   = "fd"
-	nfs1 = "nfs1"
-	nfs2 = "nfs2"
-	nfs  = "nfs"
+	fd         = "fd"
+	nfs1       = "nfs1"
+	nfs2       = "nfs2"
+	nfs        = "nfs"
+	WorkerPort string
 )
 
-//var StartPort int
-type imgHandle struct {
-	inImg       *img4g.Image
-	chain       *proc.ProcessorChain
-	status      chan bool
-	CatInstance cat.Cat
+func init() {
+	util.InitCat()
+	CatInstance = cat.Instance()
 }
 
-var imgHandleChan = make(chan imgHandle, 1000)
+//var StartPort int
+type nepheleTask struct {
+	inImg *img4g.Image
+	chain *proc.ProcessorChain
+	//response chan
+	rspChan chan bool
+
+	CatInstance cat.Cat
+
+	//if true, the task will be canceled
+	canceled bool
+
+	//use to read or set canceled
+	mutex sync.Mutex
+}
+
+func (nt *nepheleTask) SetCanceled() {
+	nt.mutex.Lock()
+	defer nt.mutex.Unlock()
+	nt.canceled = true
+}
+
+func (nt *nepheleTask) GetCanceled() bool {
+	nt.mutex.Lock()
+	defer nt.mutex.Unlock()
+	return nt.canceled
+}
+
+//chan containing tasks waiting to be processed
+var taskChan = make(chan *nepheleTask, 1000)
 
 //sourceType, channel, path
 func ParseUri(path string) (string, string, string) {
@@ -68,13 +98,13 @@ func ParseUri(path string) (string, string, string) {
 	p := params[":2"]
 	switch sourceType {
 	case fd:
-		return sourceType, strings.ToLower(channel), p
+		return "FastDFS", strings.ToLower(channel), p
 	case nfs1:
-		return nfs, strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
+		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
 	case nfs2:
-		return nfs, strings.ToLower(channel), getTargetDir(channel, nfs1) + channel + "/" + p
+		return "NFS", strings.ToLower(channel), getTargetDir(channel, nfs2) + channel + "/" + p
 	}
-	return sourceType, "", ""
+	return "FastDFS", "", ""
 }
 
 func getTargetDir(channel, storagetype string) string {
@@ -90,10 +120,10 @@ func JoinString(args ...string) string {
 	return buf.String()
 }
 
-func GetStorage(storageType string, path string) (storage.Storage, error) {
+func GetStorage(storageType string, path string, Cat cat.Cat) (storage.Storage, error) {
 	var srg storage.Storage
 	switch storageType {
-	case fd:
+	case "FastDFS":
 		domain, err := data.GetFdfsDomain()
 		if err != nil {
 			return nil, err
@@ -103,8 +133,9 @@ func GetStorage(storageType string, path string) (storage.Storage, error) {
 			Path:          path,
 			TrackerDomain: domain,
 			Port:          port,
+			Cat:           Cat,
 		}
-	case nfs:
+	case "NFS":
 		srg = &storage.Nfs{path}
 	}
 	if srg == nil {
@@ -112,15 +143,20 @@ func GetStorage(storageType string, path string) (storage.Storage, error) {
 	}
 	return srg, nil
 }
-func GetImage(storageType string, path string) ([]byte, error) {
-	srg, err := GetStorage(storageType, path)
+func GetImage(storageType string, path string, Cat cat.Cat) ([]byte, error) {
+	srg, err := GetStorage(storageType, path, Cat)
 	if err != nil {
 		return nil, err
 	}
 	return srg.GetImage()
 }
 
+var localIP string = ""
+
 func GetIP() string {
+	if localIP != "" {
+		return localIP
+	}
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return ""
@@ -132,10 +168,22 @@ func GetIP() string {
 		}
 		first := strings.Split(add, ".")[0]
 		if _, err := strconv.Atoi(first); err == nil {
+			localIP = add
 			return add
 		}
 	}
 	return ""
+}
+
+func GetClientIP(req *http.Request) string {
+	addr := req.Header.Get("X-Real-IP")
+	if addr == "" {
+		addr = req.Header.Get("X-Forwarded-For")
+		if addr == "" {
+			addr = req.RemoteAddr
+		}
+	}
+	return addr
 }
 
 func GetHttp(url string) ([]byte, error) {
@@ -238,7 +286,7 @@ func GetImageSizeDistribution(size int) string {
 // 	PauseNs      [256]uint64 // circular buffer of recent GC pause times, most recent at [(NumGC+255)%256]
 // 	NumGC        uint32
 
-func GetStats() map[string]string {
+func GetStatus() map[string]string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	var second uint64 = 1000000000
@@ -271,9 +319,25 @@ func LogErrorEvent(cat cat.Cat, name string, err string) {
 
 func LogEvent(cat cat.Cat, title string, name string, data map[string]string) {
 	event := cat.NewEvent(title, name)
-	for k, v := range data {
-		event.AddData(k, v)
+	if data != nil {
+		for k, v := range data {
+			event.AddData(k, v)
+		}
 	}
 	event.SetStatus("0")
 	event.Complete()
+}
+
+//log error with logging fields uri
+func logErrWithUri(uri string, errMsg string, errLevel string) {
+	switch errLevel {
+	case "errorLevel":
+		log.WithFields(log.Fields{
+			"uri": uri,
+		}).Error(errMsg)
+	default:
+		log.WithFields(log.Fields{
+			"uri": uri,
+		}).Warn(errMsg)
+	}
 }

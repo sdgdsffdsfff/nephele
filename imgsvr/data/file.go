@@ -1,7 +1,8 @@
 package data
 
 import (
-	"github.com/Unknwon/goconfig"
+	"github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Unknwon/goconfig"
+	"github.com/ctripcorp/nephele/util"
 	"strconv"
 	"strings"
 )
@@ -15,8 +16,18 @@ func init() {
 		return //nil
 	}
 	lock <- 1
+	//running environment
+	env := util.GetRunningEnv()
+
+	var confFile string
+	switch env {
+	case "uat":
+		confFile = "../conf/uat_conf.ini"
+	case "prod":
+		confFile = "../conf/prod_conf.ini"
+	}
 	if instance == nil {
-		instance, _ = goconfig.LoadConfigFile("../conf/conf.ini")
+		instance, _ = goconfig.LoadConfigFile(confFile)
 		return //err
 	}
 	<-lock

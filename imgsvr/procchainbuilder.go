@@ -2,12 +2,11 @@ package imgsvr
 
 import (
 	"errors"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"github.com/ctripcorp/nephele/imgsvr/img4g"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
-	//l4g "github.com/ctripcorp/nephele/util/log"
-	l4g "github.com/alecthomas/log4go"
-	"github.com/ctripcorp/cat"
 	"strconv"
 	"strings"
 )
@@ -25,53 +24,62 @@ var (
 	CmdRotate    = "rotate"
 )
 
-func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorChain, error) {
+type buildError struct {
+	error
+	errType string
+}
+
+func (e *buildError) Type() string {
+	return e.errType
+}
+
+func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorChain, *buildError) {
 	procChain := &proc.ProcessorChain{Chain: make([]proc.ImageProcessor, 0, 5)}
 
 	sourceType, channel, path := ParseUri(params[":1"])
 	//_, channel, _ := ParseUri(params[":1"])
 	sequences, e := data.GetSequenceofoperation(channel)
 	if e != nil {
-		return nil, e
+		return nil, &buildError{e, "UrlSequenceCmdError"}
 	}
 	for _, t := range sequences {
 		switch t {
 		case CmdStrip:
 			stripProcessor, e := this.getStripProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlStripCmdError"}
 			}
 			procChain.Chain = append(procChain.Chain, stripProcessor)
-			l4g.Debug("add strip processor")
+			log.Debug("add strip processor")
 		case CmdResize:
 			resizeProcessor, e := this.getResizeProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlResizeCmdError"}
 			}
 			procChain.Chain = append(procChain.Chain, resizeProcessor)
-			l4g.Debug("add resize processor")
+			log.Debug("add resize processor")
 		case CmdQuality:
 			qualityProcessor, e := this.getQualityProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlQualityCmdError"}
 			}
 			if qualityProcessor != nil {
 				procChain.Chain = append(procChain.Chain, qualityProcessor)
-				l4g.Debug("add quality processor")
+				log.Debug("add quality processor")
 			}
 		case CmdRotate:
 			rotateProcessor, e := this.getRotateProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlRotateCmdError"}
 			}
 			if rotateProcessor != nil {
 				procChain.Chain = append(procChain.Chain, rotateProcessor)
-				l4g.Debug("add rotate processor")
+				log.Debug("add rotate processor")
 			}
 		case CmdWaterMark:
 			waterMarkProcessors, e := this.getWaterMarkProcessors(sourceType, channel, path, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlWaterMarkCmdError"}
 			}
 			if waterMarkProcessors != nil {
 				for _, p := range waterMarkProcessors {
@@ -83,11 +91,11 @@ func (this *ProcChainBuilder) Build(params map[string]string) (*proc.ProcessorCh
 		case CmdFormat:
 			formatProcessor, e := this.getFormatProcessor(channel, params)
 			if e != nil {
-				return nil, e
+				return nil, &buildError{e, "UrlFormatCmdError"}
 			}
 			if formatProcessor != nil {
 				procChain.Chain = append(procChain.Chain, formatProcessor)
-				l4g.Debug("add format processor")
+				log.Debug("add format processor")
 			}
 		}
 	}
@@ -175,7 +183,7 @@ func (this *ProcChainBuilder) getValidSizeParam(widthVal, heightVal, cmdVal, cha
 	}
 
 	if !strings.Contains(resizetypes, cmdVal) {
-		return 0, 0, errors.New(JoinString("channel(", channel, ") not supported type(", cmdVal, ")"))
+		return 0, 0, errors.New(JoinString("channel: ", channel, ", reason: not support type ", cmdVal))
 	}
 
 	//check size
@@ -185,7 +193,7 @@ func (this *ProcChainBuilder) getValidSizeParam(widthVal, heightVal, cmdVal, cha
 	}
 	var wh = JoinString(",", widthVal, "x", heightVal, ",")
 	if !strings.Contains(sizes, wh) {
-		return 0, 0, errors.New(JoinString("channel[", channel, "] not supported size(", wh, ")"))
+		return 0, 0, errors.New(JoinString("channel: ", channel, ", reason: not support size ", wh))
 	}
 	return width, height, nil
 }
@@ -224,7 +232,7 @@ func (this *ProcChainBuilder) getRotateProcessor(channel string, params map[stri
 		return nil, err
 	}
 	if !strings.Contains(rotateStr, JoinString(",", rotate, ",")) {
-		return nil, errors.New(JoinString("channel(", channel, ") not supported degress(", rotate, ")"))
+		return nil, errors.New(JoinString("channel: ", channel, ", reason: not support rotate degree ", rotate))
 	}
 
 	return &proc.RotateProcessor{degress, this.Cat}, nil
@@ -242,7 +250,7 @@ func (this *ProcChainBuilder) getQualityProcessor(channel string, params map[str
 			return nil, err
 		}
 		if !strings.Contains(qualitiesStr, JoinString(",", qualityStr, ",")) {
-			return nil, errors.New(JoinString("channel(", channel, ") not supporte quality(", qualityStr, ")"))
+			return nil, errors.New(JoinString("channel: ", channel, ", reason: not support quality ", qualityStr))
 		}
 	} else {
 		qualityStr, err = data.GetQuality(channel)
@@ -268,16 +276,15 @@ func (this *ProcChainBuilder) getWaterMarkProcessors(sourceType string, channel 
 	}
 	if logoprocessor != nil {
 		processors = append(processors, logoprocessor)
-		l4g.Debug("add logo watermark processor")
+		log.Debug("add logo watermark processor")
 	}
-
 	nameprocessor, err := this.getNameWaterMarkProcessor(sourceType, channel, path, params)
 	if err != nil {
 		return nil, err
 	}
 	if nameprocessor != nil {
 		processors = append(processors, nameprocessor)
-		l4g.Debug("add name watermark processor")
+		log.Debug("add name watermark processor")
 	}
 
 	return processors, nil
@@ -310,7 +317,7 @@ func (this *ProcChainBuilder) getLogoWaterMarkProcessor(channel string, params m
 		return nil, err
 	}
 	if !strings.Contains(logonames, JoinString(",", wn, ",")) {
-		return nil, errors.New(JoinString("Not supported this watermarkname(", wn, ")"))
+		return nil, errors.New(JoinString("channel: ", channel, ", reason: not support watermark ", wn))
 	}
 	//check size
 	lesswidth, err := data.GetImagelesswidthForLogo(channel)
@@ -335,11 +342,11 @@ func (this *ProcChainBuilder) getLogoWaterMarkProcessor(channel string, params m
 		l = 9
 	}
 	var path = logodir + wn + ".png"
-	bts, err := GetImage(nfs, path)
+	bts, err := GetImage("NFS", path, this.Cat)
 	if err != nil {
 		return nil, err
 	}
-	logo := &img4g.Image{Format: "png", Blob: bts}
+	logo := &img4g.Image{Format: "png", Blob: bts, Cat: this.Cat}
 	return &proc.WaterMarkProcessor{Logo: logo, Location: l, Dissolve: dissolve, Cat: this.Cat, WaterMarkType: "WaterMark"}, nil
 }
 
@@ -372,11 +379,11 @@ func (this *ProcChainBuilder) getNameWaterMarkProcessor(sourceType string, chann
 	widthVal, _ := params[":3"]
 	width, _ := strconv.ParseInt(widthVal, 10, 64)
 	var logoname = this.getnamelogo(width)
-	imagebts, err := GetImage(sourceType, path+logoname)
+	imagebts, err := GetImage(sourceType, path+logoname, this.Cat)
 	if err != nil {
 		return nil, nil
 	}
-	logo := &img4g.Image{Format: "png", Blob: imagebts}
+	logo := &img4g.Image{Format: "png", Blob: imagebts, Cat: this.Cat}
 	defer func() {
 		logo.DestoryWand()
 	}()

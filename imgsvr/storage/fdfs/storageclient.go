@@ -1,118 +1,107 @@
 package fdfs
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/ctripcorp/ghost/pool"
+	"github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/ghost/pool"
 	"net"
-	"os"
+	"time"
 )
 
 const (
-	STORAGE_MIN_CONN int = 5
-	STORAGE_MAX_CONN int = 5
+	STORAGE_MIN_CONN        int           = 5
+	STORAGE_MAX_CONN        int           = 5
+	STORAGE_MAX_IDLE        time.Duration = 10 * time.Hour
+	STORAGE_NETWORK_TIMEOUT time.Duration = 10 * time.Second
 )
 
 type storageClient struct {
-	*poolInfo
+	host string
+	port int
 	pool.Pool
 }
 
 func newStorageClient(host string, port int) (*storageClient, error) {
-	pInfo := &poolInfo{host, port, STORAGE_MIN_CONN, STORAGE_MAX_CONN}
-	p, err := pInfo.newPool()
+	client := &storageClient{host: host, port: port}
+	p, err := pool.NewBlockingPool(STORAGE_MIN_CONN, STORAGE_MAX_CONN, STORAGE_MAX_IDLE, client.makeConn)
 	if err != nil {
 		return nil, err
 	}
-	return &storageClient{pInfo, p}, nil
+	client.Pool = p
+	return client, nil
 
 }
 
-func (this *storageClient) storageDownloadToFile(
-	storeInfo *storageInfo, localFilename string, offset int64,
-	downloadSize int64, fileName string) (*downloadRsp, error) {
-	return this.storageDownload(storeInfo, localFilename, offset, downloadSize, FDFS_DOWNLOAD_TO_FILE, fileName)
-}
-
-func (this *storageClient) storageDownloadToBuffer(
-	storeInfo *storageInfo, fileBuffer []byte, offset int64,
-	downloadSize int64, fileName string) (*downloadRsp, error) {
-	return this.storageDownload(storeInfo, fileBuffer, offset, downloadSize, FDFS_DOWNLOAD_TO_BUFFER, fileName)
-}
-
-func (this *storageClient) storageDownload(storeInfo *storageInfo, fileContent interface{}, offset int64, downloadSize int64, downloadType int, fileName string) (*downloadRsp, error) {
-	var (
-		conn          net.Conn
-		reqBuf        []byte
-		recvBuff      []byte
-		localFilename string
-		recvSize      int64
-		err           error
-	)
+func (this *storageClient) storageDownload(storeInfo *storageInfo, offset int64, downloadSize int64, fileName string) ([]byte, error) {
 	//get a connetion from pool
-	conn, err = this.Get()
+	conn, err := this.Get()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
 	//request header
-	rh := &reqHeader{}
-	rh.cmd = STORAGE_PROTO_CMD_DOWNLOAD_FILE
-	rh.pkgLen = int64(FDFS_PROTO_PKG_LEN_SIZE*2 + FDFS_GROUP_NAME_MAX_LEN + len(fileName))
-	if err = rh.send(conn); err != nil {
-		return nil, err
-	}
-
-	//request body
-	req := &downloadReq{}
-	req.offset = offset
-	if downloadSize > 0 {
-		req.downloadSize = downloadSize
-	}
-	req.groupName = storeInfo.groupName
-	req.fileName = fileName
-	reqBuf = req.marshal()
-	if err = tcpSendData(conn, reqBuf); err != nil {
-		return nil, err
-	}
-
-	//receive header
-	if err = rh.recv(conn); err != nil {
-		return nil, err
-	}
-	if rh.status != 0 {
-		return nil, Errno{int(rh.status)}
-	}
-
-	//receive body
-	switch downloadType {
-	case FDFS_DOWNLOAD_TO_FILE:
-		if localFilename, ok := fileContent.(string); ok {
-			recvSize, err = tcpRecvFile(conn, localFilename, rh.pkgLen)
-		}
-	case FDFS_DOWNLOAD_TO_BUFFER:
-		if _, ok := fileContent.([]byte); ok {
-			recvBuff, recvSize, err = tcpRecvResponse(conn, rh.pkgLen)
+	buffer := new(bytes.Buffer)
+	//package length:file_offset(8)  download_bytes(8)  group_name(16)  file_name(n)
+	binary.Write(buffer, binary.BigEndian, int64(32+len(fileName)))
+	//cmd
+	buffer.WriteByte(byte(STORAGE_PROTO_CMD_DOWNLOAD_FILE))
+	//status
+	buffer.WriteByte(byte(0))
+	//offset
+	binary.Write(buffer, binary.BigEndian, offset)
+	//download bytes
+	binary.Write(buffer, binary.BigEndian, downloadSize)
+	//16 bit groupName
+	groupNameBytes := bytes.NewBufferString(storeInfo.groupName).Bytes()
+	for i := 0; i < 15; i++ {
+		if i >= len(groupNameBytes) {
+			buffer.WriteByte(byte(0))
+		} else {
+			buffer.WriteByte(groupNameBytes[i])
 		}
 	}
+	buffer.WriteByte(byte(0))
+	// fileNameLen bit fileName
+	fileNameBytes := bytes.NewBufferString(fileName).Bytes()
+	for i := 0; i < len(fileNameBytes); i++ {
+		buffer.WriteByte(fileNameBytes[i])
+	}
+	//send request
+	if err := tcpSend(conn, buffer.Bytes(), STORAGE_NETWORK_TIMEOUT); err != nil {
+		return nil, errors.New(fmt.Sprintf("send to storage server %v fail, error info: %v", conn.RemoteAddr().String(), err.Error()))
+	}
+	//receive response header
+	recvBuff, err := recvResponse(conn, STORAGE_NETWORK_TIMEOUT)
 	if err != nil {
 		return nil, err
+		//try again
+		//	if err = tcpSend(conn, buffer.Bytes(), STORAGE_NETWORK_TIMEOUT); err != nil {
+		//		return nil, err
+		//	}
+		//	if recvBuff, err = recvResponse(conn, STORAGE_NETWORK_TIMEOUT); err != nil {
+		//		return nil, err
+		//	}
 	}
+	return recvBuff, nil
+}
 
-	if downloadSize > 0 && recvSize < downloadSize {
-		errmsg := "[-] Error: Storage response length is not match, "
-		errmsg += fmt.Sprintf("expect: %d, actual: %d", rh.pkgLen, recvSize)
-		return nil, errors.New(errmsg)
+//factory method used to dial
+func (this *storageClient) makeConn() (net.Conn, error) {
+	addr := fmt.Sprintf("%s:%d", this.host, this.port)
+	event := globalCat.NewEvent("DialStorage", addr)
+	defer func() {
+		event.Complete()
+	}()
+	conn, err := net.DialTimeout("tcp", addr, STORAGE_NETWORK_TIMEOUT)
+	if err != nil {
+		errMsg := fmt.Sprintf("dial storage %v fail, error info: %v", addr, err.Error())
+		event.AddData("detail", errMsg)
+		event.SetStatus("ERROR")
+		return nil, errors.New(errMsg)
 	}
-
-	dr := &downloadRsp{}
-	dr.fileId = storeInfo.groupName + string(os.PathSeparator) + fileName
-	if downloadType == FDFS_DOWNLOAD_TO_FILE {
-		dr.content = localFilename
-	} else {
-		dr.content = recvBuff
-	}
-	dr.downloadSize = recvSize
-	return dr, nil
+	event.SetStatus("0")
+	return conn, nil
 }

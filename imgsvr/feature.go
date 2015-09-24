@@ -2,7 +2,7 @@ package imgsvr
 
 import (
 	"errors"
-	"github.com/ctripcorp/cat"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/data"
 	"github.com/ctripcorp/nephele/imgsvr/proc"
 	"strconv"
@@ -23,11 +23,11 @@ type tgresizefeature struct {
 func (this *tgresizefeature) Process() (proc.ImageProcessor, bool, error) {
 	var W = "w"
 	if this.resizetype == W && this.height != 0 {
-		return nil, false, errors.New("channel:tg,resizetype:W not supported height not zero")
+		return nil, false, errors.New("channel: tg, resizetype: W, reason: height can only be '0' ")
 	}
 
 	if this.resizetype != W && this.height == 0 {
-		return nil, false, errors.New("channel:tg,resizetype:" + this.resizetype + " not supported height zero")
+		return nil, false, errors.New("channel: tg, resizetype: " + this.resizetype + ", reason: height can't be '0' ")
 	}
 	if this.width == 10000 && this.height < 10000 {
 		return &proc.ResizeWProcessor{this.width, this.height, this.Cat}, false, nil
@@ -77,5 +77,5 @@ func (this *hotelrotatefeature) Process() (proc.ImageProcessor, bool, error) {
 	if strings.Contains(opacitiesStr, checkstr) {
 		return nil, false, nil
 	}
-	return nil, false, errors.New(JoinString("channel(hotel) can't supported rotate(", strconv.FormatFloat(this.rotate, 'f', -1, 64), ")"))
+	return nil, false, errors.New(JoinString("channel: hotel, reason: not support rotate degree", strconv.FormatFloat(this.rotate, 'f', -1, 64)))
 }

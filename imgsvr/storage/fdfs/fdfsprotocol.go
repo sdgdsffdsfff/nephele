@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"io"
+	"fmt"
 	"net"
+	"time"
 )
 
 const (
@@ -150,86 +151,82 @@ type storageInfo struct {
 	storePathIndex int
 }
 
-type reqHeader struct {
+type header struct {
 	pkgLen int64
 	cmd    int8
 	status int8
 }
 
-func (this *reqHeader) marshal() ([]byte) {
-	buffer := new(bytes.Buffer)
-	binary.Write(buffer, binary.BigEndian, this.pkgLen)
-	buffer.WriteByte(byte(this.cmd))
-	buffer.WriteByte(byte(this.status))
-	return buffer.Bytes()
+type Error interface {
+	Error() string
+	Normal() bool //is normal error?
+	Type() string //error type
 }
 
-func (this *reqHeader) unmarshal(data []byte) error {
-	if len(data) != 10 {
-		return errors.New("data less than 10")
+type statusError struct {
+	remoteServer string
+	status       byte
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("recv header from server: %v fail, response status %v != 0", e.remoteServer, e.status)
+}
+
+func (e *statusError) Type() string {
+	switch e.status {
+	case 2:
+		return "FileNotExist"
+	case 22:
+		return "InvalidArgument"
+	default:
+		return "Other"
+	}
+}
+
+func (e *statusError) Normal() bool { return true }
+
+func newStatusError(remoteServer string, status byte) Error {
+	return &statusError{remoteServer, status}
+}
+
+//read fdfs header
+func recvHeader(conn net.Conn, timeout time.Duration) (*header, error) {
+	data, err := tcpRecv(conn, 10, timeout)
+	if err != nil {
+		errMsg := fmt.Sprintf("recv header from server: %v fail, error info: %v", conn.RemoteAddr().String(), err.Error())
+		return nil, errors.New(errMsg)
 	}
 	buff := bytes.NewBuffer(data)
-	binary.Read(buff, binary.BigEndian, &this.pkgLen)
+	h := &header{}
+	binary.Read(buff, binary.BigEndian, &h.pkgLen)
+	if h.pkgLen < 0 {
+		errMsg := fmt.Sprintf("recv header from server: %v fail, recv package size %v is not correct", conn.RemoteAddr().String(), h.pkgLen)
+		return nil, errors.New(errMsg)
+	}
 	cmd, _ := buff.ReadByte()
 	status, _ := buff.ReadByte()
-	this.cmd = int8(cmd)
-	this.status = int8(status)
-	return nil
+	if status != 0 {
+		return nil, newStatusError(conn.RemoteAddr().String(), status)
+	}
+	h.cmd = int8(cmd)
+	h.status = int8(status)
+	return h, nil
 }
 
-func (this *reqHeader) send(conn net.Conn) error {
-	buf := this.marshal()
-	if _, err := conn.Write(buf); err != nil {
-		return err
+func recvResponse(conn net.Conn, timeout time.Duration) ([]byte, error) {
+	//receive response header
+	h, err := recvHeader(conn, timeout)
+	if err != nil {
+		return nil, err
 	}
-	return nil
-}
-
-func (this *reqHeader) recv(conn net.Conn) error {
-	buf := make([]byte, 10)
-	if _, err := io.ReadFull(conn, buf); err != nil {
-		return err
+	if h.pkgLen == 0 {
+		return nil, nil
 	}
-	if err := this.unmarshal(buf); err != nil {
-		return err
+	//receive body
+	recvBuff, err := tcpRecv(conn, h.pkgLen, timeout)
+	if err != nil {
+		errMsg := fmt.Sprintf("recv body from server: %v fail, error info: %v", conn.RemoteAddr().String(), err.Error())
+		return nil, errors.New(errMsg)
 	}
-	return nil
-}
-
-
-type downloadReq struct {
-	offset         int64
-	downloadSize   int64
-	groupName      string
-	fileName string
-}
-
-// #down_fmt: |-offset(8)-download_bytes(8)-group_name(16)-remote_filename(len)-|
-func (this *downloadReq) marshal() ([]byte) {
-	buffer := new(bytes.Buffer)
-	binary.Write(buffer, binary.BigEndian, this.offset)
-	binary.Write(buffer, binary.BigEndian, this.downloadSize)
-
-	// 16 bit groupName
-	groupNameBytes := bytes.NewBufferString(this.groupName).Bytes()
-	for i := 0; i < 16; i++ {
-		if i >= len(groupNameBytes) {
-			buffer.WriteByte(byte(0))
-		} else {
-			buffer.WriteByte(groupNameBytes[i])
-		}
-	}
-
-	// fileNameLen bit fileName
-	fileNameBytes := bytes.NewBufferString(this.fileName).Bytes()
-	for i := 0; i < len(fileNameBytes); i++ {
-		buffer.WriteByte(fileNameBytes[i])
-	}
-	return buffer.Bytes()
-}
-
-type downloadRsp struct {
-	fileId string
-	content      interface{}
-	downloadSize int64
+	return recvBuff, nil
 }

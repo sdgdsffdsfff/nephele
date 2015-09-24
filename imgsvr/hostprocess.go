@@ -2,8 +2,8 @@ package imgsvr
 
 import (
 	"fmt"
-	l4g "github.com/alecthomas/log4go"
-	"github.com/ctripcorp/cat"
+	log "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/Sirupsen/logrus"
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,7 +22,7 @@ type HostProcessor struct {
 }
 
 var ports map[string]int
-var hostPost string
+var hostPort string
 var portstats map[string]url.Values
 
 func (this *HostProcessor) Stop() {
@@ -44,39 +44,74 @@ func (this *HostProcessor) ModifyNginxconf() {
 	this.computePorts()
 	if this.NginxPath != "" {
 		if err := ModifyNginxconf(this.NginxPath, this.NginxPort, ports); err != nil {
-			l4g.Error("%s -- %s", JoinString("daemonprocess->modifynginx(path:", this.NginxPath, ",port:", this.NginxPort, ")"), err)
-			LogErrorEvent(CatInstance, "daemonprocess.modifynginxerror", err.Error())
+			log.WithFields(log.Fields{
+				"nginxPath": this.NginxPath,
+				"nginxPort": this.NginxPort,
+				"type":      "Daemon.ModifyNginxError",
+			}).Error(err.Error())
+			LogErrorEvent(CatInstance, "Daemon.ModifyNginxError", err.Error())
 			return
 		}
 		if err := RestartNginx(this.NginxPath); err != nil {
-			l4g.Error("%s -- %s", JoinString("daemonprocess->restartnginx(path:", this.NginxPath, ",)"), err)
-			LogErrorEvent(CatInstance, "daemonprocess.restartnginxerror", err.Error())
+			log.WithFields(log.Fields{
+				"nginxPath": this.NginxPath,
+				"nginxPort": this.NginxPort,
+				"type":      "Daemon.RestartNginxError",
+			}).Error(err.Error())
+			LogErrorEvent(CatInstance, "Daemon.RestartNginxError", err.Error())
 			return
 		}
 	}
 }
 
 func (this *HostProcessor) Run() {
-	hostPost = strconv.Itoa(this.Port)
+	hostPort = strconv.Itoa(this.Port)
 	threadcount := strconv.Itoa(this.ThreadCount)
-	l4g.Debug(JoinString("Port:", hostPost, " threadcount:", threadcount, " nginxpath:", this.NginxPath, " nginxport:", this.NginxPort))
+	log.WithFields(log.Fields{
+		"hostPort":    hostPort,
+		"threadCount": threadcount,
+		"nginxPath":   this.NginxPath,
+		"nginxPort":   this.NginxPort,
+	}).Debug("run host process")
+
 	defer func() {
-		if err := recover(); err != nil {
-			l4g.Error("%s -- %s", JoinString("daemonprocess->run(port:", hostPost, ",threadcount:", threadcount, ",)"), err)
-			LogErrorEvent(CatInstance, "daemonprocess.recovererror", fmt.Sprintf("%v", err))
+		if p := recover(); p != nil {
+			log.WithFields(log.Fields{
+				"hostPort":    hostPort,
+				"threadCount": threadcount,
+				"type":        "DaemonProcess.RunPanic",
+			}).Error(fmt.Sprintf("%v", p))
+			LogErrorEvent(CatInstance, "DaemonProcess.RunPanic", fmt.Sprintf("%v", p))
 		}
 		os.Exit(2)
 	}()
+	func() {
+		Cat := cat.Instance()
+		tran := Cat.NewTransaction("System", Reboot)
+		defer func() {
+			tran.SetStatus("0")
+			tran.Complete()
+		}()
+		LogEvent(Cat, Reboot, JoinString(GetIP(), ":", hostPort), nil)
+	}()
+
 	this.computePorts()
 	if this.NginxPath != "" {
 		if err := ModifyNginxconf(this.NginxPath, this.NginxPort, ports); err != nil {
-			l4g.Error("%s -- %s", JoinString("daemonprocess->modifynginx(path:", this.NginxPath, ",port:", this.NginxPort, ")"), err)
-			LogErrorEvent(CatInstance, "daemonprocess.modifynginxerror", err.Error())
+			log.WithFields(log.Fields{
+				"nginxPath": this.NginxPath,
+				"nginxPort": this.NginxPort,
+				"type":      "DaemonProcess.ModifyNginxError",
+			}).Error(err.Error())
+			LogErrorEvent(CatInstance, "DaemonProcess.ModifyNginxError", err.Error())
 			return
 		}
 		if err := RestartNginx(this.NginxPath); err != nil {
-			l4g.Error("%s -- %s", JoinString("daemonprocess->restartnginx(path:", this.NginxPath, ",)"), err)
-			LogErrorEvent(CatInstance, "daemonprocess.restartnginxerror", err.Error())
+			log.WithFields(log.Fields{
+				"nginxPath": this.NginxPath,
+				"type":      "DaemonProcess.RestartNginxError",
+			}).Error(err.Error())
+			LogErrorEvent(CatInstance, "DaemonProcess.RestartNginxError", err.Error())
 			return
 		}
 	}
@@ -84,7 +119,9 @@ func (this *HostProcessor) Run() {
 	portstats = make(map[string]url.Values)
 	for p, _ := range ports {
 		this.startWorkerProcess(p)
-		l4g.Debug(JoinString("run sub proccess on port:", p))
+		log.WithFields(log.Fields{
+			"port": p,
+		}).Debug("run subproccess on port")
 	}
 
 	c := make(chan os.Signal, 1)
@@ -107,11 +144,15 @@ func (this *HostProcessor) computePorts() {
 }
 
 func (this *HostProcessor) startWorkerProcess(port string) {
-	cmd := exec.Command("go", "run", "imgsvrd.go", "-s", port, hostPost)
+	cmd := exec.Command("go", "run", "imgsvrd.go", "-s", port, hostPort)
 	err := cmd.Start()
 	if err != nil {
-		l4g.Error("%s -- %s", JoinString("daemonprocess->startWorkerProcess(port:", port, ",hostport:", hostPost, ",)"), err)
-		LogErrorEvent(CatInstance, "daemonprocess.startworkerprocesserror", err.Error())
+		log.WithFields(log.Fields{
+			"port":     port,
+			"hostPort": hostPort,
+			"type":     "DaemonProcess.StartWorkerError",
+		}).Error(err.Error())
+		LogErrorEvent(CatInstance, "DaemonProcess.StartWorkerError", err.Error())
 		return
 	}
 	return
@@ -119,27 +160,34 @@ func (this *HostProcessor) startWorkerProcess(port string) {
 
 func (this *HostProcessor) monitorWorkerProcesses() {
 	defer func() {
-		if err := recover(); err != nil {
-			l4g.Error("%s -- %s", "daemonprocess.monitorworkerprocess", err)
-			LogErrorEvent(CatInstance, "daemonprocess.monitorworkerprocess", fmt.Sprintf("%v", err))
+		if p := recover(); p != nil {
+			log.WithFields(log.Fields{
+				"type": "DaemonProcess.MonitorPanic",
+			}).Error(fmt.Sprintf("%v", p))
+			LogErrorEvent(CatInstance, "DaemonProcess.MonitorPanic", fmt.Sprintf("%v", p))
 			this.monitorWorkerProcesses()
 		}
 	}()
 	time.Sleep(8 * time.Second) //sleep ,wait sub process run
 	for {
 		time.Sleep(2 * time.Second)
-		l4g.Debug("monitor......")
+		log.Debug("monitor......")
 		for port, countor := range ports {
 			if port == "" {
 				continue
 			}
 
 			if countor > 2 {
-				l4g.Debug("restart port:" + port)
+				log.WithFields(log.Fields{
+					"port": port,
+				}).Debug("restart port")
 				err := KillProcessByPort(port)
 				if err != nil {
-					l4g.Error("%s -- %s", JoinString("daemonprocess->monitorworkerprocess->killprocessbyport(port:", port, ")"), err)
-					LogErrorEvent(CatInstance, "daemonprocess.killprocessbyport", err.Error())
+					log.WithFields(log.Fields{
+						"port": port,
+						"type": "DaemonProcess.KillProcessError",
+					}).Error(err.Error())
+					LogErrorEvent(CatInstance, "DaemonProcess.KillProcessError", err.Error())
 				}
 				this.startWorkerProcess(port)
 				ports[port] = 0
@@ -147,8 +195,11 @@ func (this *HostProcessor) monitorWorkerProcesses() {
 				_, err := GetHttp(JoinString("http://127.0.0.1:", port, "/heartbeat/"))
 				if err != nil {
 					ports[port] = ports[port] + 1
-					l4g.Error("%s -- %s", JoinString("daemonprocess->monitorworkerprocess->get heartbeat(port:", port, ")"), err)
-					LogErrorEvent(CatInstance, "workerprocess.heartbeaterror", err.Error())
+					log.WithFields(log.Fields{
+						"port": port,
+						"type": "WorkerProcess.HeartbeatError",
+					}).Error(err.Error())
+					LogErrorEvent(CatInstance, "WorkerProcess.HeartbeatError", err.Error())
 				} else {
 					ports[port] = 0
 				}
@@ -160,7 +211,7 @@ func (this *HostProcessor) monitorWorkerProcesses() {
 func (this *HostProcessor) sendCatHeartBeat() {
 	defer func() {
 		if err := recover(); err != nil {
-			l4g.Error(err)
+			log.Error(fmt.Sprintf("%v", err))
 			this.sendCatHeartBeat()
 		}
 	}()
@@ -173,14 +224,14 @@ func (this *HostProcessor) sendCatHeartBeat() {
 
 	catinstance := cat.Instance()
 	for {
-		l4g.Debug("send cat heartbeat")
-		stats1 := GetStats()
+		log.Debug("send cat heartbeat")
+		stats1 := GetStatus()
 		data := url.Values{}
-		data.Add("port", hostPost)
+		data.Add("port", hostPort)
 		for k, v := range stats1 {
 			data.Add(k, v)
 		}
-		portstats[hostPost] = data
+		portstats[hostPort] = data
 
 		tran := catinstance.NewTransaction("System", "Status")
 		h := catinstance.NewHeartbeat("HeartBeat", ip)
@@ -223,12 +274,17 @@ func (this *HostProcessor) sendCatHeartBeat() {
 }
 
 func (this *HostProcessor) listenHeartbeat() {
-	l4g.Debug("listen and serve port:" + hostPost)
+	log.WithFields(log.Fields{
+		"hostPort": hostPort,
+	}).Debug("listen and serve port")
 	//start server
 	http.HandleFunc("/heartbeat/", this.heartbeatHandler)
-	if err := http.ListenAndServe(":"+hostPost, nil); err != nil {
-		l4g.Error("%s -- %s", JoinString("daemonprocess->ListenAndServe-(port:", hostPost, ")"), err)
-		LogErrorEvent(CatInstance, "daemonprocess.listenandserveerror", err.Error())
+	if err := http.ListenAndServe(":"+hostPort, nil); err != nil {
+		log.WithFields(log.Fields{
+			"hostPort": hostPort,
+			"type":     "DaemonProcess.ListenAndServeError",
+		}).Error(err.Error())
+		LogErrorEvent(CatInstance, "DaemonProcess.ListenAndServeError", err.Error())
 		os.Exit(1)
 	}
 }
@@ -240,7 +296,9 @@ func (this *HostProcessor) heartbeatHandler(w http.ResponseWriter, request *http
 		portstats[port] = request.Form
 		value = "1"
 	}
-	l4g.Debug(JoinString("get heartbeat from port[", port, "]"))
+	log.WithFields(log.Fields{
+		"port": port,
+	}).Debug("get heartbeat from port")
 
 	w.Header().Set("Connection", "keep-alive")
 	a := []byte(value)

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	cat "github.com/ctripcorp/nephele/Godeps/_workspace/src/github.com/ctripcorp/cat.go"
 	"github.com/ctripcorp/nephele/imgsvr/storage/fdfs"
 	"github.com/ctripcorp/nephele/imgsvr/storage/nfs"
 	"strconv"
@@ -14,9 +15,10 @@ type Fdfs struct {
 	Path          string
 	TrackerDomain string
 	Port          int
+	Cat           cat.Cat
 }
 
-var client fdfs.FdfsClient = nil 
+var client fdfs.FdfsClient = nil
 var lock chan int = make(chan int, 1)
 var initialized bool = false
 
@@ -26,7 +28,7 @@ func (this *Fdfs) GetImage() ([]byte, error) {
 		if !initialized {
 			if client == nil {
 				var e error
-				client, e = fdfs.NewFdfsClient([]string{this.TrackerDomain},strconv.Itoa(this.Port))
+				client, e = fdfs.NewFdfsClient([]string{this.TrackerDomain}, strconv.Itoa(this.Port))
 				if e != nil {
 					return nil, e
 				}
@@ -35,8 +37,7 @@ func (this *Fdfs) GetImage() ([]byte, error) {
 		}
 		<-lock
 	}
-
-	bts, err := client.DownloadToBuffer(this.Path)
+	bts, err := client.DownloadToBuffer(this.Path, this.Cat)
 	if err != nil {
 		return nil, err
 	} else {
